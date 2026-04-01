@@ -1,3 +1,6 @@
 [submodule "lib/Arduino-FOC"]
 	path = lib/Arduino-FOC
 	url = git@github.com:jaguilar/Arduino-FOC.git
+[submodule "lib/stm32_arduino_shim"]
+	path = lib/stm32_arduino_shim
+	url = git@github.com:jaguilar/stm32_arduino_shim.git
