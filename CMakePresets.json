@@ -35,6 +35,16 @@
             "cacheVariables": {
                 "CMAKE_BUILD_TYPE": "Release"
             }
+        },
+        {
+            "name": "ReleaseWithDebugInfo",
+            "inherits": "default",
+            "displayName": "Debug-Release (Optimized + Symbols)",
+            "description": "Optimized at -O2 with debug symbols enabled",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "RelWithDebInfo",
+                "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
+            }
         }
     ],
     "buildPresets": [
