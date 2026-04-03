@@ -14,6 +14,11 @@ set(CMAKE_CXX_COMPILER              ${TOOLCHAIN_PREFIX}g++)
 set(CMAKE_LINKER                    ${TOOLCHAIN_PREFIX}g++)
 set(CMAKE_OBJCOPY                   ${TOOLCHAIN_PREFIX}objcopy)
 set(CMAKE_SIZE                      ${TOOLCHAIN_PREFIX}size)
+set(CMAKE_AR                        ${TOOLCHAIN_PREFIX}gcc-ar)
+ set(CMAKE_RANLIB                   ${TOOLCHAIN_PREFIX}gcc-ranlib)
+set(CMAKE_NM                        ${TOOLCHAIN_PREFIX}gcc-nm)
+
+cmake_policy(SET CMP0069 NEW)
 
 set(CMAKE_EXECUTABLE_SUFFIX_ASM     ".elf")
 set(CMAKE_EXECUTABLE_SUFFIX_C       ".elf")
@@ -22,7 +27,7 @@ set(CMAKE_EXECUTABLE_SUFFIX_CXX     ".elf")
 set(CMAKE_TRY_COMPILE_TARGET_TYPE STATIC_LIBRARY)
 
 # MCU specific flags
-set(TARGET_FLAGS "-mcpu=cortex-m4 -mfpu=fpv4-sp-d16 -mfloat-abi=hard ")
+set(TARGET_FLAGS "-mcpu=cortex-m4 -mfpu=fpv4-sp-d16 -mfloat-abi=hard -Wdouble-promotion -Wfloat-conversion")
 
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${TARGET_FLAGS}")
 set(CMAKE_ASM_FLAGS "${CMAKE_C_FLAGS} -x assembler-with-cpp -MMD -MP")
@@ -33,11 +38,23 @@ set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -fdata-sections -ffunction-sections -f
 # set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fcyclomatic-complexity")
 
 set(CMAKE_C_FLAGS_DEBUG "-O0 -g3")
-set(CMAKE_C_FLAGS_RELEASE "-Os -g0")
 set(CMAKE_CXX_FLAGS_DEBUG "-O0 -g3")
+
+set(CMAKE_C_FLAGS_RELEASE "-Os -g0")
 set(CMAKE_CXX_FLAGS_RELEASE "-Os -g0")
+
 set(CMAKE_C_FLAGS_RELWITHDEBINFO "-O2 -g -DNDEBUG")
 set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "-O2 -g -DNDEBUG")
+
+option(FORCE_ASSERT "Enable assertions even in release mode." OFF)
+if (FORCE_ASSERT)
+    foreach(config RELWITHDEBINFO RELEASE MINSIZEREL)
+        string(REPLACE "-DNDEBUG" "" CMAKE_C_FLAGS_${config} "${CMAKE_C_FLAGS_${config}}")
+        string(REPLACE "-DNDEBUG" "" CMAKE_CXX_FLAGS_${config} "${CMAKE_CXX_FLAGS_${config}}")
+        set(CMAKE_C_FLAGS_${config} "${CMAKE_C_FLAGS_${config}} -DUSE_FULL_ASSERT=1")
+        set(CMAKE_CXX_FLAGS_${config} "${CMAKE_CXX_FLAGS_${config}} -DUSE_FULL_ASSERT=1")
+    endforeach()
+endif()
 
 set(CMAKE_CXX_FLAGS "${CMAKE_C_FLAGS} -fno-rtti -fno-exceptions -fno-threadsafe-statics")
 
@@ -45,5 +62,5 @@ set(CMAKE_EXE_LINKER_FLAGS "${TARGET_FLAGS}")
 set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -T \"${CMAKE_SOURCE_DIR}/STM32G474XX_FLASH.ld\"")
 set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} --specs=nano.specs")
 set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,-Map=${CMAKE_PROJECT_NAME}.map -Wl,--gc-sections")
-set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,--print-memory-usage")
+set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,--print-memory-usage -flto")
 set(TOOLCHAIN_LINK_LIBRARIES "m")

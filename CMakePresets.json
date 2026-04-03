@@ -43,7 +43,8 @@
             "description": "Optimized at -O2 with debug symbols enabled",
             "cacheVariables": {
                 "CMAKE_BUILD_TYPE": "RelWithDebInfo",
-                "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
+                "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
+                "FORCE_ASSERT": "ON"
             }
         }
     ],
