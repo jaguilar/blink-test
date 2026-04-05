@@ -28,11 +28,43 @@ extern "C" {
     // GoogleTest filepath uses mkdir
     int mkdir(const char *path, mode_t mode) { return -1; }
 
+    // GoogleTest uses gettimeofday for test timing. 
+    // We implement it using the SysTick timer which is standard on Cortex-M.
+    int _gettimeofday(struct timeval *tv, void *tzvp) {
+        if (tv) {
+            static uint32_t last_val = 0;
+            static uint64_t total_cycles = 0;
+            uint32_t current_val = SysTick->VAL;
+            uint32_t load = SysTick->LOAD;
+            
+            if (last_val == 0) last_val = load;
+            
+            if (current_val <= last_val) {
+                total_cycles += (last_val - current_val);
+            } else {
+                // Handle wrap
+                total_cycles += (last_val + (load - current_val));
+            }
+            last_val = current_val;
+            
+            // SystemCoreClock is 100MHz in Renode .repl
+            const uint32_t freq = 100000000;
+            tv->tv_sec = total_cycles / freq;
+            tv->tv_usec = (total_cycles % freq) * 1000000 / freq;
+        }
+        return 0;
+    }
+
     // Bypass actual hardware clock initialization to avoid simulation deadlocks
     void SystemInit(void) {
         // Enable FPU (CP10 and CP11 Full Access) to prevent HardFaults when GTest uses floats
-        // This uses standard Cortex-M4 CPACR register
         SCB->CPACR |= ((3U << 10U * 2U) | (3U << 11U * 2U));
+
+        // Initialize SysTick for timekeeping
+        SysTick->LOAD = 0xFFFFFF; // Max 24-bit value
+        SysTick->VAL = 0;
+        SysTick->CTRL = SysTick_CTRL_ENABLE_Msk | SysTick_CTRL_CLKSOURCE_Msk; // Enable, No Interrupt, CPU Clock
+
         // Manually write 'S' to UART to indicate SystemInit ran
         *(volatile uint8_t *)0x60000000 = 'S';
     }
@@ -94,7 +126,6 @@ TEST(TimersTest, Tim8Overflows) {
 TEST(TimersTest, Tim20Overflows) {
     ExpectTimerOverflows(TIM20, LL_APB2_GRP1_PERIPH_TIM20, "TIM20");
 }
-
 
 #if 0
 TEST(TimersTest, StartOutOfPhaseProductionTimers) {
