@@ -7,15 +7,11 @@ FetchContent_Declare(
   GIT_REPOSITORY https://github.com/google/googletest.git
   GIT_TAG        release-1.12.1
 )
+FetchContent_MakeAvailable(googletest)
 
 set(gtest_disable_pthreads ON CACHE BOOL "" FORCE)
 set(GTEST_HAS_DEATH_TEST OFF CACHE BOOL "" FORCE)
 set(GTEST_HAS_STREAM_REDIRECTION OFF CACHE BOOL "" FORCE)
-
-# Often embedded systems don't have rtti or exceptions. 
-# Depending on your main project, these might be needed:
-# add_compile_options(-fno-exceptions -fno-rtti)
-# add_compile_definitions(GTEST_HAS_EXCEPTIONS=0)
 
 add_compile_definitions(
     GTEST_HAS_POSIX_RE=0
