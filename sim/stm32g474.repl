@@ -1,0 +1,50 @@
+// STM32G474 Basic Platform
+// Provides CPU, Flash, SRAM, and a dummy peripheral block for RCC/HAL mapping to avoid immediate HardFaults.
+
+nvic: IRQControllers.NVIC @ sysbus 0xE000E000
+
+cpu: CPU.CortexM @ sysbus
+    cpuType: "cortex-m4f"
+    nvic: nvic
+
+flash: Memory.MappedMemory @ sysbus 0x08000000
+    size: 0x00080000
+
+sram: Memory.MappedMemory @ sysbus 0x20000000
+    size: 0x00018000
+sram2: Memory.MappedMemory @ sysbus 0x20018000
+    size: 0x00008000
+
+// Dummy peripheral catch-all for RCC/GPIO/Timers
+// You can replace these with actual Renode models (e.g. UART.STM32_UART) as needed.
+peripherals_apb1: Memory.MappedMemory @ sysbus 0x40000000
+    size: 0x8000
+peripherals_apb2_1: Memory.MappedMemory @ sysbus 0x40010000
+    size: 0x2C00
+
+timer1: Timers.STM32_Timer @ sysbus 0x40012C00
+    frequency: 100000000
+    initialLimit: 0xFFFF
+
+peripherals_apb2_2: Memory.MappedMemory @ sysbus 0x40013000
+    size: 0x400
+
+timer8: Timers.STM32_Timer @ sysbus 0x40013400
+    frequency: 100000000
+    initialLimit: 0xFFFF
+
+peripherals_apb2_3: Memory.MappedMemory @ sysbus 0x40013800
+    size: 0x1800
+
+timer20: Timers.STM32_Timer @ sysbus 0x40015000
+    frequency: 100000000
+    initialLimit: 0xFFFF
+
+peripherals_apb2_4: Memory.MappedMemory @ sysbus 0x40015400
+    size: 0x2C00
+peripherals_ahb1: Memory.MappedMemory @ sysbus 0x40020000
+    size: 0x8000
+peripherals_ahb2: Memory.MappedMemory @ sysbus 0x48000000
+    size: 0x8000
+
+usart2: UART.NS16550 @ sysbus 0x60000000

@@ -1,0 +1,20 @@
+# Renode script for headless test execution
+using sysbus
+mach create "stm32g474_test"
+machine LoadPlatformDescription $ORIGIN/stm32g474.repl
+# Set Log Level to see Python logs
+logLevel 2
+# Load Python trigger synchronization script
+# Ensure the python hook is not crashing the runner until we need the timer sync logic
+# machine Python "@$ORIGIN/timer_sync.py"
+# RCC/PLL Tags to avoid HardFaults during HAL_Init
+sysbus Tag <0x40021000 4> "RCC_CR" 0x00000063
+sysbus Tag <0x40021008 4> "RCC_PLLCFGR" 0x00001000
+# Map USART2 to uart.log for run_headless.py to read
+sysbus.usart2 CreateFileBackend $ORIGIN/uart.log true
+macro reset
+"""
+    sysbus LoadELF $elf_path
+"""
+runMacro $reset
+start
