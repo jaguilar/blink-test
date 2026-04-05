@@ -44,7 +44,8 @@
             "cacheVariables": {
                 "CMAKE_BUILD_TYPE": "RelWithDebInfo",
                 "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
-                "FORCE_ASSERT": "ON"
+                "FORCE_ASSERT": "ON",
+                "BUILD_TESTING": "ON"
             }
         }
     ],

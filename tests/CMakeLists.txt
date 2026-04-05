@@ -4,7 +4,8 @@
 include(FetchContent)
 FetchContent_Declare(
   googletest
-  URL https://github.com/google/googletest/archive/refs/tags/release-1.12.1.tar.gz
+  GIT_REPOSITORY https://github.com/google/googletest.git
+  GIT_TAG        release-1.12.1
 )
 # Disable pthreads for baremetal
 set(gtest_disable_pthreads ON CACHE BOOL "" FORCE)
