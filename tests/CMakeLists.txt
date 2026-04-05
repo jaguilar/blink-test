@@ -7,8 +7,10 @@ FetchContent_Declare(
   GIT_REPOSITORY https://github.com/google/googletest.git
   GIT_TAG        release-1.12.1
 )
-# Disable pthreads for baremetal
+
 set(gtest_disable_pthreads ON CACHE BOOL "" FORCE)
+set(GTEST_HAS_DEATH_TEST OFF CACHE BOOL "" FORCE)
+set(GTEST_HAS_STREAM_REDIRECTION OFF CACHE BOOL "" FORCE)
 
 # Often embedded systems don't have rtti or exceptions. 
 # Depending on your main project, these might be needed:
