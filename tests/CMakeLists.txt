@@ -7,7 +7,6 @@ FetchContent_Declare(
   GIT_REPOSITORY https://github.com/google/googletest.git
   GIT_TAG        release-1.12.1
 )
-FetchContent_MakeAvailable(googletest)
 
 set(gtest_disable_pthreads ON CACHE BOOL "" FORCE)
 set(GTEST_HAS_DEATH_TEST OFF CACHE BOOL "" FORCE)
@@ -18,13 +17,16 @@ add_compile_definitions(
     GTEST_HAS_FILE_SYSTEM=0
     GTEST_HAS_DEATH_TEST=0
     GTEST_HAS_STREAM_REDIRECTION=0
-    _POSIX_PATH_MAX=256
-    _POSIX_C_SOURCE=200809L
-    _DEFAULT_SOURCE=1
+    GTEST_HAS_RTTI=0
+    GTEST_HAS_EXCEPTIONS=0
+    GTEST_HAS_PTHREAD=0
+    GTEST_OS_XTENSA=1
     _GNU_SOURCE=1
+    _POSIX_PATH_MAX=256
 )
 
 FetchContent_MakeAvailable(googletest)
+
 
 add_executable(blink-tests
     main_test.cc

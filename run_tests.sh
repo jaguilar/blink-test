@@ -19,7 +19,7 @@ echo "Configuring blink-tests..."
 # Always run cmake configuration to ensure BUILD_TESTING=ON and apply any passed arguments.
 # Using -B and -S is more robust than manual directory creation and cd.
 # We include the toolchain file to ensure cross-compilation remains correctly configured.
-cmake -B "$BUILD_DIR" -S . \
+cmake -G Ninja -B "$BUILD_DIR" -S . \
     -DBUILD_TESTING=ON \
     -DCMAKE_TOOLCHAIN_FILE=cmake/gcc-arm-none-eabi.cmake \
     "$@"
