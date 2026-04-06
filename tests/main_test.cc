@@ -117,7 +117,7 @@ TEST(TimersTest, Tim20Overflows) {
     ExpectTimerOverflows(TIM20, LL_APB2_GRP1_PERIPH_TIM20, "TIM20");
 }
 
-#if 0
+#if 1
 TEST(TimersTest, TimerSyncTrigger) {
     // Lead timer
     printf("Configuring TIM1 (Leader)\n");

@@ -9,6 +9,7 @@ sysbus Tag <0x40022010 4> "FLASH_SR" 0x00000000    # No errors in Flash Status
 # Map USART1 to uart.log with immediateFlush to ensure logs appear even on quick exit
 sysbus.usart1 CreateFileBackend $uart_log true
 
+# i $ORIGIN/timer_sync.py
 
 macro reset
 """
