@@ -6,8 +6,9 @@ sysbus Tag <0x40021008 4> "RCC_PLLCFGR" 0x01000000 # Dummy non-zero value for PL
 sysbus Tag <0x40022000 4> "FLASH_ACR" 0x00000600   # Typical FLASH_ACR for STM32
 sysbus Tag <0x40022010 4> "FLASH_SR" 0x00000000    # No errors in Flash Status
 
-# Map USART1 to uart.log
-sysbus.usart1 CreateFileBackend $uart_log
+# Map USART1 to uart.log with immediateFlush to ensure logs appear even on quick exit
+sysbus.usart1 CreateFileBackend $uart_log true
+
 
 macro reset
 """
