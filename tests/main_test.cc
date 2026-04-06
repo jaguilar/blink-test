@@ -9,21 +9,24 @@
 
 extern "C" {
     // STM32 HAL / CMSIS includes if needed
-    #include "main.h"
+#include "gpio.h"
+#include "main.h"
+#include "usart.h"
 
-    // Stubs for newlib-nano missing wide character functions that GTest links against
-    wint_t getwc(FILE *) { return 0; }
-    wint_t ungetwc(wint_t, FILE *) { return 0; }
-    wint_t putwc(wchar_t, FILE *) { return 0; }
-    int swprintf(wchar_t *, size_t, const wchar_t *, ...) { return 0; }
+extern UART_HandleTypeDef huart1;
 
-    // Reroute stdout to simulated UART2 (0x60000000)
-    int _write(int file, char *ptr, int len) {
-        for (int i = 0; i < len; i++) {
-            *(volatile uint8_t *)0x60000000 = ptr[i];
-        }
-        return len;
-    }
+// Stubs for newlib-nano missing wide character functions that GTest links
+// against
+wint_t getwc(FILE*) { return 0; }
+wint_t ungetwc(wint_t, FILE*) { return 0; }
+wint_t putwc(wchar_t, FILE*) { return 0; }
+int swprintf(wchar_t*, size_t, const wchar_t*, ...) { return 0; }
+
+// Reroute stdout to USART1
+int _write(int file, char* ptr, int len) {
+  HAL_UART_Transmit(&huart1, (uint8_t*)ptr, len, HAL_MAX_DELAY);
+  return len;
+}
 
     // GoogleTest filepath uses mkdir
     int mkdir(const char *path, mode_t mode) { return -1; }
@@ -46,27 +49,14 @@ extern "C" {
                 total_cycles += (last_val + (load - current_val));
             }
             last_val = current_val;
-            
-            // SystemCoreClock is 100MHz in Renode .repl
-            const uint32_t freq = 100000000;
+
+            // SystemCoreClock should be 160MHz after SystemClock_Config()
+            uint32_t freq = SystemCoreClock;
+            if (freq == 0) freq = 160000000;  // Fallback
             tv->tv_sec = total_cycles / freq;
             tv->tv_usec = (total_cycles % freq) * 1000000 / freq;
         }
         return 0;
-    }
-
-    // Bypass actual hardware clock initialization to avoid simulation deadlocks
-    void SystemInit(void) {
-        // Enable FPU (CP10 and CP11 Full Access) to prevent HardFaults when GTest uses floats
-        SCB->CPACR |= ((3U << 10U * 2U) | (3U << 11U * 2U));
-
-        // Initialize SysTick for timekeeping
-        SysTick->LOAD = 0xFFFFFF; // Max 24-bit value
-        SysTick->VAL = 0;
-        SysTick->CTRL = SysTick_CTRL_ENABLE_Msk | SysTick_CTRL_CLKSOURCE_Msk; // Enable, No Interrupt, CPU Clock
-
-        // Manually write 'S' to UART to indicate SystemInit ran
-        *(volatile uint8_t *)0x60000000 = 'S';
     }
 }
 
@@ -178,25 +168,36 @@ TEST(TimersTest, StartOutOfPhaseProductionTimers) {
 }
 #endif
 
-// In a bare-metal environment, GoogleTest's default main() might not invoke
-// hardware init correctly before tests. You might need to set up HAL_Init(),
-// SystemClock_Config(), etc. if you are testing hardware drivers directly.
-// For now, we supply a basic main.
-int main(void) {
-    // Manually write 'M' to UART to indicate main started
-    *(volatile uint8_t *)0x60000000 = 'M';
-    *(volatile uint8_t *)0x60000000 = '\n';
+extern "C" {
+void Setup() {
+  // Initialization of HAL and MX_..._Init is handled by main.c.
+  // We explicitly enable the UART here to ensure printf works.
+  __HAL_UART_ENABLE(&huart1);
+  printf("\n\nUART enabled\n");
+}
 
-    // Disable stdout buffering so GTest prints character-by-character immediately
-    setvbuf(stdout, NULL, _IONBF, 0);
-    setvbuf(stderr, NULL, _IONBF, 0);
+void Loop() {
+  // Now that peripherals are initialized and we are in a task,
+  // we can start the tests.
 
-    printf("Starting blink-tests...\n");
+  // Disable stdout buffering
+  setvbuf(stdout, NULL, _IONBF, 0);
+  setvbuf(stderr, NULL, _IONBF, 0);
 
-    int argc = 1;
-    char name[] = "blink-tests";
-    char *argv[] = { name, NULL };
+  printf("\n\nStarting blink-tests in FreeRTOS task...\n");
 
-    testing::InitGoogleTest(&argc, argv);
-    return RUN_ALL_TESTS();
+  int argc = 1;
+  char name[] = "blink-tests";
+  char* argv[] = {name, NULL};
+
+  testing::InitGoogleTest(&argc, argv);
+  int result = RUN_ALL_TESTS();
+  printf("Tests finished with result: %d\n", result);
+
+  // We can use a Renode semi-hosting or equivalent to exit if needed.
+  // For now, just idle.
+  while (1) {
+    osDelay(1000);
+  }
+}
 }
