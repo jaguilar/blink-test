@@ -20,7 +20,8 @@ add_compile_definitions(
     GTEST_HAS_RTTI=0
     GTEST_HAS_EXCEPTIONS=0
     GTEST_HAS_PTHREAD=0
-    GTEST_OS_XTENSA=1
+    GTEST_HAS_STD_WSTRING=0
+    GTEST_HAS_GLOBAL_WSTRING=0
     _GNU_SOURCE=1
     _POSIX_PATH_MAX=256
 )
@@ -58,6 +59,8 @@ target_link_libraries(blink-tests
     Arduino-FOC
     gtest
 )
+
+set_target_properties(blink-tests PROPERTIES INTERPROCEDURAL_OPTIMIZATION OFF)
 
 # Provide basic syscalls (nosys) to resolve _read, _write, _close, etc.
 target_link_options(blink-tests PRIVATE
