@@ -1,0 +1,53 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "Start Renode (Firmware Debug Server)",
+            "type": "shell",
+            "command": "renode --disable-xwt --console -e \"\\$elf_path=@${workspaceFolder}/build/blink-test.elf; \\$uart_log=@${workspaceFolder}/sim/uart.log; i @${workspaceFolder}/sim/debug.resc\"",
+            "isBackground": true,
+            "problemMatcher": {
+                "pattern": {
+                    "regexp": "^.*\\[ERROR\\].*$"
+                },
+                "background": {
+                    "activeOnStart": true,
+                    "beginsPattern": "Renode, version",
+                    "endsPattern": "GDB server started on port 3333"
+                }
+            },
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": false,
+                "panel": "dedicated",
+                "showReuseMessage": true,
+                "clear": false
+            }
+        },
+        {
+            "label": "Start Renode (Tests Debug Server)",
+            "type": "shell",
+            "command": "renode --disable-xwt --console -e \"\\$elf_path=@${workspaceFolder}/build/tests/blink-tests.elf; \\$uart_log=@${workspaceFolder}/sim/uart_tests.log; i @${workspaceFolder}/sim/debug.resc\"",
+            "isBackground": true,
+            "problemMatcher": {
+                "pattern": {
+                    "regexp": "^.*\\[ERROR\\].*$"
+                },
+                "background": {
+                    "activeOnStart": true,
+                    "beginsPattern": "Renode, version",
+                    "endsPattern": "GDB server started on port 3333"
+                }
+            },
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": false,
+                "panel": "dedicated",
+                "showReuseMessage": true,
+                "clear": false
+            }
+        }
+    ]
+}
