@@ -14,24 +14,43 @@ if len(sys.argv) < 3:
 resc_file = os.path.abspath(sys.argv[1])
 elf_file = os.path.abspath(sys.argv[2])
 
-print(f"Starting Renode Headless Simulation... {elf_file}")
+log_file = os.path.join(os.path.dirname(resc_file), "uart.log")
+if os.path.exists(log_file):
+    os.remove(log_file)
 
-# Start renode in its own process group
-proc = subprocess.Popen(['renode', '--disable-xwt', '--port', '-1', '-e', f'$elf_path=@{elf_file}; i @{resc_file}'], 
-                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, preexec_fn=os.setsid)
+# Open log file for renode's own output
+renode_log_path = os.path.join(os.path.dirname(resc_file), "renode.log")
+renode_log = open(renode_log_path, "w")
+
+# Start renode in its own process group, disconnected from terminal stdin.
+# We add a line hook to the UART to automatically quit when we see the test completion marker.
+# This ensures that even if output is buffered, it is flushed to disk as soon as tests finish.
+renode_cmds = [
+    f'$elf_path=@{elf_file};',
+    f'$uart_log=@{log_file};',
+    f'i @{resc_file};',
+    'sysbus.usart1 AddLineHook "test suites ran." "monitor.Parse(\'quit\')"'
+]
+
+proc = subprocess.Popen(['renode', '--disable-xwt', '--plain', '-e', " ".join(renode_cmds)], 
+                        preexec_fn=os.setsid, 
+                        stdin=subprocess.DEVNULL,
+                        stdout=renode_log,
+                        stderr=subprocess.STDOUT)
 
 def cleanup():
     if proc.poll() is None:
         try:
-            os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+            # Tell the whole process group to exit
+            os.killpg(os.getpgid(proc.pid), signal.SIGTERM)
+            time.sleep(0.5)
+            if proc.poll() is None:
+                os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
         except ProcessLookupError:
             pass
+    renode_log.close()
 
 atexit.register(cleanup)
-
-log_file = os.path.join(os.path.dirname(resc_file), "uart.log")
-if os.path.exists(log_file):
-    os.remove(log_file)
 
 # Wait for log file to be created
 for _ in range(10):
