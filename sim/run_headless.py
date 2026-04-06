@@ -35,7 +35,7 @@ renode_cmds = [
 args = ['renode', '--disable-xwt', '--plain', '--console', '-e', " ".join(renode_cmds)]
 proc = subprocess.Popen(args,
                         preexec_fn=os.setsid, 
-                        stdin=subprocess.DEVNULL,
+                        stdin=subprocess.PIPE,
                         stdout=renode_log,
                         stderr=subprocess.STDOUT)
 
@@ -105,6 +105,17 @@ try:
         time.sleep(0.2)
 finally:
     cleanup()
+    # Final check of the logs after termination to capture any remaining output
+    if os.path.exists(log_file):
+        with open(log_file, "r", errors="ignore") as f:
+            full_content_final = f.read()
+            if "Global test environment tear-down" in full_content_final or "test suites ran." in full_content_final:
+                # Update passed/failed status if we found the result in the final check
+                if "[  FAILED  ]" in full_content_final:
+                    failed = True
+                else:
+                    passed = True
+
 
 if passed and not failed:
     print("\n\nTests Passed!")
