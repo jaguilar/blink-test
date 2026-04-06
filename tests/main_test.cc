@@ -118,6 +118,72 @@ TEST(TimersTest, Tim20Overflows) {
 }
 
 #if 0
+TEST(TimersTest, TimerSyncTrigger) {
+    // Lead timer
+    printf("Configuring TIM1 (Leader)\n");
+    LL_APB2_GRP1_EnableClock(LL_APB2_GRP1_PERIPH_TIM1);
+    LL_TIM_SetAutoReload(TIM1, 2000);
+    LL_TIM_SetPrescaler(TIM1, 0);
+    LL_TIM_OC_SetCompareCH4(TIM1, 500);
+    // Set MMS to OC4REF (7)
+    LL_TIM_SetTriggerOutput(TIM1, LL_TIM_TRGO_OC4REF);
+    LL_TIM_SetCounter(TIM1, 0);
+    
+    // Slave timer
+    printf("Configuring TIM8 (Slave)\n");
+    LL_APB2_GRP1_EnableClock(LL_APB2_GRP1_PERIPH_TIM8);
+    LL_TIM_SetAutoReload(TIM8, 2000);
+    LL_TIM_SetPrescaler(TIM8, 0);
+    // Set Slave Mode to Trigger Mode (6)
+    LL_TIM_SetSlaveMode(TIM8, LL_TIM_SLAVEMODE_TRIGGER);
+    // Set TS to ITR0 (which is TIM1 for TIM8)
+    LL_TIM_SetTriggerInput(TIM8, LL_TIM_TS_ITR0);
+    LL_TIM_SetCounter(TIM8, 0);
+    
+    printf("Starting TIM1 (Leader)...\n");
+    LL_TIM_EnableCounter(TIM1);
+    
+    printf("Waiting for TIM8 to start...\n");
+    int timeout = 1000000;
+    while (!LL_TIM_IsEnabledCounter(TIM8) && timeout > 0) {
+        // Small delay to allow virtual time to progress
+        for (int i = 0; i < 100; i++) {
+            asm volatile("nop");
+        }
+        timeout--;
+    }
+    
+    if (timeout == 0) {
+        printf("TIM8 failed to start! TIM1_CNT=%lu, TIM8_CNT=%lu, TIM8_CR1=0x%lx\n", 
+               (uint32_t)LL_TIM_GetCounter(TIM1), 
+               (uint32_t)LL_TIM_GetCounter(TIM8),
+               (uint32_t)TIM8->CR1);
+    }
+    EXPECT_GT(timeout, 0) << "TIM8 failed to start via TRGO from TIM1";
+    
+    // Wait for some counts to accumulate in both
+    for (int i = 0; i < 10000; i++) {
+        asm volatile("nop");
+    }
+    
+    uint32_t cnt1 = LL_TIM_GetCounter(TIM1);
+    uint32_t cnt8 = LL_TIM_GetCounter(TIM8);
+    
+    LL_TIM_DisableCounter(TIM1);
+    LL_TIM_DisableCounter(TIM8);
+    
+    printf("Counts: TIM1=%lu, TIM8=%lu, Diff=%ld\n", cnt1, cnt8, (long)cnt1 - (long)cnt8);
+    
+    // Expected diff: 500. Allow some slack for simulation processing.
+    EXPECT_NEAR((int)cnt1 - (int)cnt8, 500, 50);
+    
+    // Cleanup for other tests
+    LL_TIM_SetSlaveMode(TIM8, LL_TIM_SLAVEMODE_DISABLED);
+    LL_TIM_SetTriggerOutput(TIM1, LL_TIM_TRGO_RESET);
+}
+#endif
+
+#if 0
 TEST(TimersTest, StartOutOfPhaseProductionTimers) {
     printf("Enabling TIM1, TIM8, TIM20 clocks\n");
     LL_APB2_GRP1_EnableClock(LL_APB2_GRP1_PERIPH_TIM1);
