@@ -32,7 +32,8 @@ renode_cmds = [
     'sysbus.usart1 AddLineHook "test suites ran." "monitor.Parse(\'quit\')"'
 ]
 
-proc = subprocess.Popen(['renode', '--disable-xwt', '--plain', '-e', " ".join(renode_cmds)], 
+args = ['renode', '--disable-xwt', '--plain', '--console', '-e', " ".join(renode_cmds)]
+proc = subprocess.Popen(args,
                         preexec_fn=os.setsid, 
                         stdin=subprocess.DEVNULL,
                         stdout=renode_log,
@@ -62,9 +63,11 @@ passed = False
 failed = False
 start_time = time.time()
 pos = 0
+renode_pos = 0
 
 try:
     while time.time() - start_time < 120:
+        full_content = ""
         if os.path.exists(log_file):
             with open(log_file, "r", errors="ignore") as f:
                 f.seek(pos)
@@ -77,14 +80,26 @@ try:
                 # Re-read full content to check for exit condition
                 f.seek(0)
                 full_content = f.read()
-                if "Global test environment tear-down" in full_content or "test suites ran." in full_content:
-                    if "[  FAILED  ]" in full_content:
-                        failed = True
-                    else:
-                        passed = True
-                    break
-                    
-        if proc.poll() is not None:
+                
+        if os.path.exists(renode_log_path):
+            with open(renode_log_path, "r", errors="ignore") as f:
+                f.seek(renode_pos)
+                new_content = f.read()
+                if new_content:
+                    sys.stdout.write(new_content)
+                    sys.stdout.flush()
+                    renode_pos = f.tell()
+
+        if "Global test environment tear-down" in full_content or "test suites ran." in full_content:
+            if "[  FAILED  ]" in full_content:
+                failed = True
+            else:
+                passed = True
+            break
+
+        poll_res = proc.poll()            
+        if poll_res is not None:
+            print(f'proc.poll returned {poll_res}')
             break
             
         time.sleep(0.2)
