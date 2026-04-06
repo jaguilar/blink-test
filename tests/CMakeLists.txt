@@ -30,6 +30,19 @@ FetchContent_MakeAvailable(googletest)
 
 add_executable(blink-tests
     main_test.cc
+    ../Core/Src/main.c
+    ../Core/Src/app_freertos.c
+    ../Core/Src/gpio.c
+    ../Core/Src/usart.c
+    ../Core/Src/adc.c
+    ../Core/Src/dma.c
+    ../Core/Src/spi.c
+    ../Core/Src/tim.c
+    ../Core/Src/stm32g4xx_it.c
+    ../Core/Src/stm32g4xx_hal_msp.c
+    ../Core/Src/stm32g4xx_hal_timebase_tim.c
+    ../Core/Src/sysmem.c
+    ../Core/Src/syscalls.c
     ../startup_stm32g474xx.s
     # Include other source files you want to test
     ../Core/Src/foc_types.cc
@@ -38,6 +51,7 @@ add_executable(blink-tests
 # Pull in the same libraries as the main application to be able to test them
 target_link_libraries(blink-tests
     stm32cubemx
+    STM32_Drivers
     m
     FreeRTOS
     Arduino
