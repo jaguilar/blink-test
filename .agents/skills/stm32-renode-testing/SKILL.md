@@ -87,3 +87,19 @@ When running headlessly, use a Python script to tail the `uart.log`. This preven
 volatile uint32_t *CPACR = (volatile uint32_t *)0xE000ED88;
 *CPACR |= (0xF << 20);
 ```
+
+### 5. Advanced Timer Synchronization (Master/Slave)
+
+Renode's standard timer models do not automatically support internal trigger (ITR) synchronization for slaving timers to each other's OC/TRGO events. You must implement this logic using **System Bus Hooks** in Python.
+
+**Master -> Slave Trigger Pattern**:
+1. Attach a `SetHookBeforePeripheralWrite` to the Master timer.
+2. In the hook, detect the start bit (`CEN` in `CR1`) and calculate the trigger delay based on `CCR` and `CNT`.
+3. Use `machine.ScheduleAction` to fire the trigger after the virtual time delay ($CCR - CNT$).
+4. The trigger function manually sets the `CEN` bit in the Slave timer's `CR1`.
+
+**Verified API calls for hooks**:
+- `machine.GetAllNames()`: Returns all registered peripheral names (e.g., `sysbus.timers1`).
+- `machine[name]`: Acts as an indexer to retrieve a peripheral object by its full name.
+- `monitor.Parse(command)`: Executes a Monitor command; use this for `sysbus SetHookBeforePeripheralWrite` to avoid IronPython generic type inference issues.
+- `machine.ScheduleAction(TimeInterval.FromNanoseconds(ns), callback)`: Schedules a callback in virtual time.
