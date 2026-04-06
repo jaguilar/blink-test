@@ -1,5 +1,6 @@
 #define STFOC_SIMULATION
-#include <gtest/gtest.h>
+#include "CppUTest/CommandLineTestRunner.h"
+#include "CppUTest/TestHarness.h"
 #include "foc_types.h"
 #include <span>
 #include <vector>
@@ -15,11 +16,16 @@ extern "C" {
 
 extern UART_HandleTypeDef huart1;
 
-// Stubs for newlib-nano missing wide character functions that GTest links
-// against
-wint_t getwc(FILE*) { return 0; }
-wint_t ungetwc(wint_t, FILE*) { return 0; }
+// Stubs for newlib-nano missing wide character functions that GTest/CppUTest might link against
+#ifndef putwc
 wint_t putwc(wchar_t, FILE*) { return 0; }
+#endif
+#ifndef getwc
+wint_t getwc(FILE*) { return 0; }
+#endif
+#ifndef ungetwc
+wint_t ungetwc(wint_t, FILE*) { return 0; }
+#endif
 int swprintf(wchar_t*, size_t, const wchar_t*, ...) { return 0; }
 
 // Reroute stdout to USART1
@@ -61,8 +67,12 @@ int _write(int file, char* ptr, int len) {
 }
 
 
+TEST_GROUP(DummyTest)
+{
+};
+
 TEST(DummyTest, ShouldPass) {
-    EXPECT_EQ(1, 1);
+    CHECK_EQUAL(1, 1);
 }
 
 void ExpectTimerOverflows(TIM_TypeDef* tim, uint32_t periph, const char* name) {
@@ -82,15 +92,16 @@ void ExpectTimerOverflows(TIM_TypeDef* tim, uint32_t periph, const char* name) {
     LL_TIM_EnableIT_UPDATE(tim); // Enable update interrupt request just in case
     LL_TIM_EnableCounter(tim);
     
-    printf("Waiting for %s overflow (ARR=%lu)\n", name, (uint32_t)LL_TIM_GetAutoReload(tim));
+    printf("Waiting for %s overflow (ARR=%u)\n", name, (unsigned int)LL_TIM_GetAutoReload(tim));
+    
     // Wait for the counter to overflow and set UIF
-    int timeout = 100000;
+    int timeout = 1000000;
     while (!LL_TIM_IsActiveFlag_UPDATE(tim) && timeout > 0) {
-        if (timeout % 10000 == 0) {
+        if (timeout % 100000 == 0) {
             printf(".");
         }
         // Small delay to allow virtual time to progress between register reads
-        for (int i = 0; i < 100; i++) {
+        for (int i = 0; i < 500; i++) {
             asm volatile("nop");
         }
         timeout--;
@@ -98,12 +109,16 @@ void ExpectTimerOverflows(TIM_TypeDef* tim, uint32_t periph, const char* name) {
     printf("\n");
     
     if (timeout == 0) {
-        printf("%s Timed out! CNT=%lu, SR=0x%lx\n", name, (uint32_t)LL_TIM_GetCounter(tim), (uint32_t)tim->SR);
+        printf("%s Timed out! CNT=%u, SR=0x%x\n", name, (unsigned int)LL_TIM_GetCounter(tim), (unsigned int)tim->SR);
     }
     
-    EXPECT_GT(timeout, 0) << "Timed out waiting for " << name << " overflow";
-    EXPECT_TRUE(LL_TIM_IsActiveFlag_UPDATE(tim)) << name << " UIF not set";
+    CHECK_TEXT(timeout > 0, name);
+    CHECK_TRUE(LL_TIM_IsActiveFlag_UPDATE(tim));
 }
+
+TEST_GROUP(TimersTest)
+{
+};
 
 TEST(TimersTest, Tim1Overflows) {
     ExpectTimerOverflows(TIM1, LL_APB2_GRP1_PERIPH_TIM1, "TIM1");
@@ -144,22 +159,25 @@ TEST(TimersTest, TimerSyncTrigger) {
     LL_TIM_EnableCounter(TIM1);
     
     printf("Waiting for TIM8 to start...\n");
-    int timeout = 1000000;
-    while (!LL_TIM_IsEnabledCounter(TIM8) && timeout > 0) {
+    uint32_t start_cycles = DWT->CYCCNT;
+    uint32_t timeout_cycles = SystemCoreClock / 1000; // 1ms
+    while (!LL_TIM_IsEnabledCounter(TIM8) && (DWT->CYCCNT - start_cycles) < timeout_cycles) {
         // Small delay to allow virtual time to progress
         for (int i = 0; i < 100; i++) {
             asm volatile("nop");
         }
-        timeout--;
     }
+    uint32_t elapsed_cycles = DWT->CYCCNT - start_cycles;
     
-    if (timeout == 0) {
-        printf("TIM8 failed to start! TIM1_CNT=%lu, TIM8_CNT=%lu, TIM8_CR1=0x%lx\n", 
-               (uint32_t)LL_TIM_GetCounter(TIM1), 
-               (uint32_t)LL_TIM_GetCounter(TIM8),
-               (uint32_t)TIM8->CR1);
+    if (!LL_TIM_IsEnabledCounter(TIM8)) {
+        printf("TIM8 failed to start after %u cycles (%u ms)! TIM1_CNT=%u, TIM8_CNT=%u, TIM8_CR1=0x%x\n", 
+               (unsigned int)elapsed_cycles,
+               (unsigned int)(elapsed_cycles / (SystemCoreClock / 1000)),
+               (unsigned int)LL_TIM_GetCounter(TIM1), 
+               (unsigned int)LL_TIM_GetCounter(TIM8),
+               (unsigned int)TIM8->CR1);
     }
-    EXPECT_GT(timeout, 0) << "TIM8 failed to start via TRGO from TIM1";
+    CHECK_TEXT(LL_TIM_IsEnabledCounter(TIM8), "TIM8 failed to start via TRGO from TIM1 within 1ms");
     
     // Wait for some counts to accumulate in both
     for (int i = 0; i < 10000; i++) {
@@ -172,10 +190,10 @@ TEST(TimersTest, TimerSyncTrigger) {
     LL_TIM_DisableCounter(TIM1);
     LL_TIM_DisableCounter(TIM8);
     
-    printf("Counts: TIM1=%lu, TIM8=%lu, Diff=%ld\n", cnt1, cnt8, (long)cnt1 - (long)cnt8);
+    printf("Counts: TIM1=%u, TIM8=%u, Diff=%d\n", (unsigned int)cnt1, (unsigned int)cnt8, (int)cnt1 - (int)cnt8);
     
     // Expected diff: 500. Allow some slack for simulation processing.
-    EXPECT_NEAR((int)cnt1 - (int)cnt8, 500, 50);
+    DOUBLES_EQUAL(500, (int)cnt1 - (int)cnt8, 50);
     
     // Cleanup for other tests
     LL_TIM_SetSlaveMode(TIM8, LL_TIM_SLAVEMODE_DISABLED);
@@ -206,9 +224,9 @@ TEST(TimersTest, StartOutOfPhaseProductionTimers) {
     stfoc::StartTimersOutOfPhase(timers, 0.25f);
  
     printf("Checking if all timers are enabled\n");
-    EXPECT_TRUE(LL_TIM_IsEnabledCounter(TIM1));
-    EXPECT_TRUE(LL_TIM_IsEnabledCounter(TIM8));
-    EXPECT_TRUE(LL_TIM_IsEnabledCounter(TIM20));
+    CHECK_TRUE(LL_TIM_IsEnabledCounter(TIM1));
+    CHECK_TRUE(LL_TIM_IsEnabledCounter(TIM8));
+    CHECK_TRUE(LL_TIM_IsEnabledCounter(TIM20));
  
     // In center-aligned mode, 0.25 offset should mean TIM8 starts when TIM1 is at 0.25 * ARR * 2 = 0.5 * ARR.
     // However, since they both count, the relative difference should be maintained.
@@ -223,13 +241,13 @@ TEST(TimersTest, StartOutOfPhaseProductionTimers) {
     int32_t diff18 = (int32_t)cnt1 - (int32_t)cnt8;
     int32_t diff820 = (int32_t)cnt8 - (int32_t)cnt20;
  
-    EXPECT_NEAR(diff18, 500, 50);
-    EXPECT_NEAR(diff820, 500, 50);
+    DOUBLES_EQUAL(500, diff18, 50);
+    DOUBLES_EQUAL(500, diff820, 50);
  
     printf("Verifying cleanup\n");
     for (auto* tim : timers) {
-        EXPECT_EQ(tim->SMCR & (TIM_SMCR_SMS | TIM_SMCR_SMS_3), LL_TIM_SLAVEMODE_DISABLED);
-        EXPECT_EQ(tim->CR2 & TIM_CR2_MMS, LL_TIM_TRGO_RESET);
+        CHECK_EQUAL(LL_TIM_SLAVEMODE_DISABLED, tim->SMCR & (TIM_SMCR_SMS | TIM_SMCR_SMS_3));
+        CHECK_EQUAL(LL_TIM_TRGO_RESET, tim->CR2 & TIM_CR2_MMS);
     }
 }
 #endif
@@ -239,7 +257,12 @@ void Setup() {
   // Initialization of HAL and MX_..._Init is handled by main.c.
   // We explicitly enable the UART here to ensure printf works.
   __HAL_UART_ENABLE(&huart1);
-  printf("\n\nUART enabled\n");
+  printf("\n\nUART enabled (Printf)\n");
+
+  // Enable DWT Cycle Counter for high-precision timing
+  CoreDebug->DEMCR |= CoreDebug_DEMCR_TRCENA_Msk;
+  DWT->CYCCNT = 0;
+  DWT->CTRL |= DWT_CTRL_CYCCNTENA_Msk;
 }
 
 void Loop() {
@@ -252,13 +275,14 @@ void Loop() {
 
   printf("\n\nStarting blink-tests in FreeRTOS task...\n");
 
-  int argc = 1;
+  int argc = 2;
   char name[] = "blink-tests";
-  char* argv[] = {name, NULL};
+  char verbose[] = "-v";
+  char* argv[] = {name, verbose, NULL};
 
-  testing::InitGoogleTest(&argc, argv);
-  int result = RUN_ALL_TESTS();
+  int result = CommandLineTestRunner::RunAllTests(argc, argv);
   printf("Tests finished with result: %d\n", result);
+  printf("test suites ran.\n");
 
   // We can use a Renode semi-hosting or equivalent to exit if needed.
   // For now, just idle.

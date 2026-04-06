@@ -75,10 +75,6 @@ target_link_libraries(${CMAKE_PROJECT_NAME}
     # Add user defined libraries
 )
 
-# Technically we're supposed to check it it's supported but maybe just
-# update your toolchain lol!?
-set(CMAKE_INTERPROCEDURAL_OPTIMIZATION TRUE)
-
 # Add testing
 option(BUILD_TESTING "Build tests" OFF)
 if(BUILD_TESTING)

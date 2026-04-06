@@ -1,33 +1,33 @@
 # Tests CMake file
 
-# Fetch GoogleTest
+# Fetch CppUTest
 include(FetchContent)
 FetchContent_Declare(
-  googletest
-  GIT_REPOSITORY https://github.com/google/googletest.git
-  GIT_TAG        release-1.12.1
+  CppUTest
+  GIT_REPOSITORY https://github.com/cpputest/cpputest.git
+  GIT_TAG        v4.0
 )
 
-set(gtest_disable_pthreads ON CACHE BOOL "" FORCE)
-set(GTEST_HAS_DEATH_TEST OFF CACHE BOOL "" FORCE)
-set(GTEST_HAS_STREAM_REDIRECTION OFF CACHE BOOL "" FORCE)
+# CppUTest configuration for embedded
+set(CPPUTEST_PLATFORM Standard CACHE STRING "Platform implementation" FORCE)
+set(EXTENSIONS ON CACHE BOOL "Enable CppUTest extensions" FORCE)
+set(STD_C ON CACHE BOOL "Enable standard C library" FORCE)
+set(STD_CPP OFF CACHE BOOL "Disable standard C++ library for embedded" FORCE)
+set(MEMORY_LEAK_DETECTION OFF CACHE BOOL "Disable memory leak detection" FORCE)
+
+# Force disable features that cause build errors in this environment
+set(HAVE_PTHREAD_MUTEX_LOCK OFF CACHE INTERNAL "Forced disable")
+set(HAVE_GETTIMEOFDAY OFF CACHE INTERNAL "Forced disable")
+set(HAVE_FORK OFF CACHE INTERNAL "Forced disable")
+set(HAVE_EXCEPTIONS OFF CACHE INTERNAL "Forced disable")
 
 add_compile_definitions(
-    GTEST_HAS_POSIX_RE=0
-    GTEST_HAS_FILE_SYSTEM=0
-    GTEST_HAS_DEATH_TEST=0
-    GTEST_HAS_STREAM_REDIRECTION=0
-    GTEST_HAS_RTTI=0
-    GTEST_HAS_EXCEPTIONS=0
-    GTEST_HAS_PTHREAD=0
-    GTEST_HAS_STD_WSTRING=0
-    GTEST_HAS_GLOBAL_WSTRING=0
-    _GNU_SOURCE=1
-    _POSIX_PATH_MAX=256
+    CPPUTEST_MEM_LEAK_DETECTION_DISABLED
+    CPPUTEST_USE_STD_CPP_LIB=0
+    CPPUTEST_USE_STD_C_LIB=1
 )
 
-FetchContent_MakeAvailable(googletest)
-
+FetchContent_MakeAvailable(CppUTest)
 
 add_executable(blink-tests
     main_test.cc
@@ -57,10 +57,9 @@ target_link_libraries(blink-tests
     FreeRTOS
     Arduino
     Arduino-FOC
-    gtest
+    CppUTest
+    CppUTestExt
 )
-
-set_target_properties(blink-tests PROPERTIES INTERPROCEDURAL_OPTIMIZATION OFF)
 
 # Provide basic syscalls (nosys) to resolve _read, _write, _close, etc.
 target_link_options(blink-tests PRIVATE

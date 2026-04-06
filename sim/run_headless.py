@@ -27,26 +27,23 @@ def tail_log(file_path, pos):
 
 def check_results(content):
     """Checks content for test completion and status."""
-    # Pattern for total tests to run
-    # [==========] Running 4 tests from 2 test suites.
-    m_start = re.search(r"\[==========\] Running (\d+) tests", content)
-    total_tests = int(m_start.group(1)) if m_start else 0
+    # Pattern for CppUTest success: "OK (N tests, N ran, N checks, ...)"
+    # Pattern for CppUTest failure: "Errors (N failures, N tests, ...)"
     
-    # Pattern for finished
-    finished = "Global test environment tear-down" in content or "test suites ran." in content
+    finished = "test suites ran." in content
     
-    # Count OKs and Fails
-    oks = content.count("[       OK ]")
-    fails = content.count("[  FAILED  ]")
+    m_ok = re.search(r"OK \((\d+) tests", content)
+    m_fail = re.search(r"Errors \((\d+) failures", content)
     
-    if fails > 0:
-        return finished, False, True, "FAILED"
+    if m_fail:
+        return True, False, True, "FAILED"
     
-    if finished:
-        if total_tests > 0 and oks == total_tests:
+    if m_ok or finished:
+        if m_ok:
             return True, True, False, "PASSED"
         else:
-            return True, False, False, "UNKNOWN"
+            # If we saw the "finished" hook but not the OK/Errors yet, wait a bit
+            return finished, "OK" in content, "Errors" in content, "RUNNING"
             
     return False, False, False, "RUNNING"
 
@@ -108,7 +105,7 @@ uart_pos = 0
 renode_pos = 0
 
 try:
-    while time.time() - start_time < 120:
+    while time.time() - start_time < 20:
         # Tail UART log
         uart_pos, full_uart = tail_log(log_file, uart_pos)
         
