@@ -103,3 +103,40 @@ Renode's standard timer models do not automatically support internal trigger (IT
 - `machine[name]`: Acts as an indexer to retrieve a peripheral object by its full name.
 - `monitor.Parse(command)`: Executes a Monitor command; use this for `sysbus SetHookBeforePeripheralWrite` to avoid IronPython generic type inference issues.
 - `machine.ScheduleAction(TimeInterval.FromNanoseconds(ns), callback)`: Schedules a callback in virtual time.
+
+### 6. Unit Test Filtering (Handshake Protocol)
+
+To run specific tests or groups without restarting the simulation with different ELF files, implement a UART-based handshake protocol. This allows the Python runner to pass command-line arguments (like `-sn` for test name or `-sg` for group) directly to the test runner in the firmware.
+
+#### Firmware Implementation
+The firmware should signal it is ready and then wait for a command.
+
+```cpp
+void Loop() {
+  printf("READY_FOR_TESTS\n"); // Signal to Python runner
+  char cmd_buf[256];
+  ReadLine(cmd_buf, sizeof(cmd_buf)); // Implement using HAL_UART_Receive
+  
+  // Parse "START_TESTS <args>"
+  if (strncmp(cmd_buf, "START_TESTS ", 12) == 0) {
+    char* args_str = cmd_buf + 12;
+    // Tokenize args_str into argc/argv
+    CommandLineTestRunner::RunAllTests(argc, argv);
+  }
+}
+```
+
+#### Python Runner Implementation
+The runner tails the UART log and injects the command when the signal is detected.
+
+```python
+if not command_sent and "READY_FOR_TESTS" in full_uart:
+    # Use WriteChar loop for maximum compatibility across Renode UART models
+    for char in f"START_TESTS {test_filter}\n":
+        proc.stdin.write(f"sysbus.usart1 WriteChar {ord(char)}\n".encode())
+    proc.stdin.flush()
+    command_sent = True
+```
+
+> [!IMPORTANT]
+> Renode's `AddLineHook` can be finicky with line endings. Detecting the signal in the Python tailing loop and sending the command via `proc.stdin` (Renode monitor) is often more reliable and easier to debug.

@@ -5,6 +5,7 @@ import os
 import atexit
 import signal
 import re
+import argparse
 
 def tail_log(file_path, pos):
     """Reads and prints new content from a file, returns the new position and full content."""
@@ -47,12 +48,15 @@ def check_results(content):
             
     return False, False, False, "RUNNING"
 
-if len(sys.argv) < 3:
-    print("Usage: run_headless.py <test_runner.resc> <firmware.elf>")
-    sys.exit(1)
+parser = argparse.ArgumentParser(description="Run tests in Renode with optional filtering.")
+parser.add_argument("resc", help="The Renode script file (.resc)")
+parser.add_argument("elf", help="The firmware ELF file")
+parser.add_argument("-t", "--test-filter", help="Test filter arguments for CppUTest (e.g. '-sn ShouldPass' or '-sg TimersTest')")
+args_parsed = parser.parse_args()
 
-resc_file = os.path.abspath(sys.argv[1])
-elf_file = os.path.abspath(sys.argv[2])
+resc_file = os.path.abspath(args_parsed.resc)
+elf_file = os.path.abspath(args_parsed.elf)
+test_filter = args_parsed.test_filter or "-v"
 sim_dir = os.path.dirname(resc_file)
 
 log_file = os.path.join(sim_dir, "uart.log")
@@ -103,14 +107,28 @@ status = "UNKNOWN"
 start_time = time.time()
 uart_pos = 0
 renode_pos = 0
+command_sent = False
 
 try:
-    while time.time() - start_time < 20:
+    while time.time() - start_time < 30: # Increased timeout for potential handshake
         # Tail UART log
         uart_pos, full_uart = tail_log(log_file, uart_pos)
         
         # Tail Renode log
         renode_pos, _ = tail_log(renode_log_path, renode_pos)
+
+        # Implementation of handshake
+        if not command_sent and "READY_FOR_TESTS" in full_uart:
+            print(f"---> Sending test filter: {test_filter}")
+            # We send the command to Renode's monitor via stdin
+            # Some Renode versions/models don't expose FeedString to the monitor.
+            # Using a character-by-character WriteChar loop is a more robust fallback.
+            full_cmd = f"START_TESTS {test_filter}\n"
+            for char in full_cmd:
+                cmd = f'sysbus.usart1 WriteChar {ord(char)}\n'
+                proc.stdin.write(cmd.encode())
+            proc.stdin.flush()
+            command_sent = True
 
         finished, passed, failed, current_status = check_results(full_uart)
         if finished or failed:

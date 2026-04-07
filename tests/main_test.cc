@@ -247,7 +247,26 @@ TEST(TimersTest, StartOutOfPhaseProductionTimers) {
 }
 #endif
 
+#include <string.h>
+
 extern "C" {
+static void ReadLine(char* buf, size_t max_len) {
+  size_t pos = 0;
+  while (pos < max_len - 1) {
+    uint8_t ch;
+    // Use a small timeout to allow FreeRTOS to breathe if needed, though HAL_MAX_DELAY is fine in a task.
+    if (HAL_UART_Receive(&huart1, &ch, 1, HAL_MAX_DELAY) == HAL_OK) {
+      if (ch == '\r' || ch == '\n') {
+        if (pos > 0) break;
+        continue;
+      }
+      buf[pos++] = ch;
+      // Echo back for debugging if needed, but Renode's FeedString doesn't need it.
+    }
+  }
+  buf[pos] = '\0';
+}
+
 void Setup() {
   // Initialization of HAL and MX_..._Init is handled by main.c.
   // We explicitly enable the UART here to ensure printf works.
@@ -269,11 +288,37 @@ void Loop() {
   setvbuf(stderr, NULL, _IONBF, 0);
 
   printf("\n\nStarting blink-tests in FreeRTOS task...\n");
+  
+  // Handshake with test runner
+  printf("READY_FOR_TESTS\n");
+  
+  char cmd_buf[256];
+  ReadLine(cmd_buf, sizeof(cmd_buf));
+  
+  int argc = 0;
+  char* argv[16];
+  static char program_name[] = "blink-tests";
+  argv[argc++] = program_name;
 
-  int argc = 2;
-  char name[] = "blink-tests";
-  char verbose[] = "-v";
-  char* argv[] = {name, verbose, NULL};
+  if (strncmp(cmd_buf, "START_TESTS ", 12) == 0) {
+    char* args_str = cmd_buf + 12;
+    char* token = strtok(args_str, " ");
+    while (token != NULL && argc < 15) {
+      argv[argc++] = token;
+      token = strtok(NULL, " ");
+    }
+  } else if (strcmp(cmd_buf, "START_TESTS") == 0) {
+    // No arguments, just run all (or default)
+    static char verbose[] = "-v";
+    argv[argc++] = verbose;
+  }
+
+  argv[argc] = NULL;
+
+  printf("Running tests with %d arguments...\n", argc);
+  for (int i = 0; i < argc; i++) {
+    printf("  argv[%d]: %s\n", i, argv[i]);
+  }
 
   int result = CommandLineTestRunner::RunAllTests(argc, argv);
   printf("Tests finished with result: %d\n", result);
