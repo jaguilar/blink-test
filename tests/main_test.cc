@@ -136,22 +136,17 @@ TEST(TimersTest, Tim20Overflows) {
 TEST(TimersTest, TimerSyncTrigger) {
     // Lead timer
     printf("Configuring TIM1 (Leader)\n");
-    LL_APB2_GRP1_EnableClock(LL_APB2_GRP1_PERIPH_TIM1);
-    LL_TIM_SetAutoReload(TIM1, 2000);
+    LL_TIM_SetAutoReload(TIM1, 100000);
     LL_TIM_SetPrescaler(TIM1, 0);
     LL_TIM_OC_SetCompareCH4(TIM1, 500);
-    // Set MMS to OC4REF (7)
     LL_TIM_SetTriggerOutput(TIM1, LL_TIM_TRGO_OC4REF);
     LL_TIM_SetCounter(TIM1, 0);
     
     // Slave timer
     printf("Configuring TIM8 (Slave)\n");
-    LL_APB2_GRP1_EnableClock(LL_APB2_GRP1_PERIPH_TIM8);
-    LL_TIM_SetAutoReload(TIM8, 2000);
+    LL_TIM_SetAutoReload(TIM8, 100000);
     LL_TIM_SetPrescaler(TIM8, 0);
-    // Set Slave Mode to Trigger Mode (6)
     LL_TIM_SetSlaveMode(TIM8, LL_TIM_SLAVEMODE_TRIGGER);
-    // Set TS to ITR0 (which is TIM1 for TIM8)
     LL_TIM_SetTriggerInput(TIM8, LL_TIM_TS_ITR0);
     LL_TIM_SetCounter(TIM8, 0);
     
