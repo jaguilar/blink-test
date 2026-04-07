@@ -254,14 +254,12 @@ static void ReadLine(char* buf, size_t max_len) {
   size_t pos = 0;
   while (pos < max_len - 1) {
     uint8_t ch;
-    // Use a small timeout to allow FreeRTOS to breathe if needed, though HAL_MAX_DELAY is fine in a task.
     if (HAL_UART_Receive(&huart1, &ch, 1, HAL_MAX_DELAY) == HAL_OK) {
       if (ch == '\r' || ch == '\n') {
         if (pos > 0) break;
         continue;
       }
       buf[pos++] = ch;
-      // Echo back for debugging if needed, but Renode's FeedString doesn't need it.
     }
   }
   buf[pos] = '\0';
