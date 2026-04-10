@@ -76,23 +76,39 @@ rcc: Python.PythonPeripheral @ sysbus 0x40021000
 pwr: Memory.MappedMemory @ sysbus 0x40007000
     size: 0x400
 
+// Trigger Matrix: 32 bus lines for timer synchronization.
+// Note: The pin index in the TriggerMatrix corresponds directly to the value written to the 
+// TS (Trigger Selection) register field. In STM32G4, these values do not always match 
+// the nominal ITRx index (e.g., ITR5 is value 9).
+triggerMatrix: Timers.STM32_TimerTriggerMatrix
+
 timers1: Timers.STM32_Timer @ sysbus 0x40012C00
     frequency: 100000000
     initialLimit: 0xFFFF
+    TriggerMatrix: triggerMatrix
+    TRGO -> triggerMatrix@0
 timers2: Timers.STM32_Timer @ sysbus <0x40000000, +0x400>
     frequency: 10000000
     initialLimit: 0xffffffff
+    TriggerMatrix: triggerMatrix
+    TRGO -> triggerMatrix@1
     ->nvic@28
 timers3: Timers.STM32_Timer @ sysbus <0x40000400, +0x400>
     frequency: 10000000
     initialLimit: 0xffffffff
+    TriggerMatrix: triggerMatrix
+    TRGO -> triggerMatrix@2
     ->nvic@29
 timers8: Timers.STM32_Timer @ sysbus 0x40013400
     frequency: 100000000
     initialLimit: 0xFFFF
+    TriggerMatrix: triggerMatrix
+    TRGO -> triggerMatrix@9
 timers20: Timers.STM32_Timer @ sysbus 0x40015000
     frequency: 100000000
     initialLimit: 0xFFFF
+    TriggerMatrix: triggerMatrix
+    TRGO -> triggerMatrix@13
 
 gpioa: GPIOPort.STM32_GPIOPort @ sysbus <0x48000000, +0x400>
 gpiob: GPIOPort.STM32_GPIOPort @ sysbus <0x48000400, +0x400>

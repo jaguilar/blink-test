@@ -52,11 +52,13 @@ parser = argparse.ArgumentParser(description="Run tests in Renode with optional 
 parser.add_argument("resc", help="The Renode script file (.resc)")
 parser.add_argument("elf", help="The firmware ELF file")
 parser.add_argument("-t", "--test-filter", help="Test filter arguments for CppUTest (e.g. '-sn ShouldPass' or '-sg TimersTest')")
+parser.add_argument("--renode", default="renode", help="Path to Renode executable (e.g. 'mono /path/to/Renode.exe')")
 args_parsed = parser.parse_args()
 
 resc_file = os.path.abspath(args_parsed.resc)
 elf_file = os.path.abspath(args_parsed.elf)
 test_filter = args_parsed.test_filter or "-v"
+renode_cmd_raw = args_parsed.renode
 sim_dir = os.path.dirname(resc_file)
 
 log_file = os.path.join(sim_dir, "uart.log")
@@ -75,7 +77,8 @@ renode_cmds = [
     'sysbus.usart1 AddLineHook "test suites ran." "monitor.Parse(\'quit\')"'
 ]
 
-args = ['renode', '--disable-xwt', '--plain', '--console', '-e', " ".join(renode_cmds)]
+# Handle renode command which might be multiple words (e.g. 'mono Renode.exe')
+args = renode_cmd_raw.split() + ['--disable-xwt', '--plain', '--console', '-e', " ".join(renode_cmds)]
 proc = subprocess.Popen(args,
                         preexec_fn=os.setsid, 
                         stdin=subprocess.PIPE,

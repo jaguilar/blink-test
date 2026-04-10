@@ -30,8 +30,17 @@ cmake --build "$BUILD_DIR" --target blink-tests
 
 # 2. Run the headless simulation
 echo "Running tests in Renode..."
+RENODE_EXE="lib/renode/output/bin/Release/Renode.exe"
+if [[ -f "$RENODE_EXE" ]]; then
+    # Use local build if available
+    RENODE_BIN="mono $(pwd)/$RENODE_EXE"
+else
+    # Fallback to system renode
+    RENODE_BIN="renode"
+fi
+
 if [[ -f "$ELF_FILE" ]]; then
-    python3 "$SIM_DIR/main_test.py" "$RESC_FILE" "$ELF_FILE"
+    python3 "$SIM_DIR/main_test.py" "$RESC_FILE" "$ELF_FILE" --renode "$RENODE_BIN"
 else
     echo "Error: Test binary not found at $ELF_FILE. Build might have failed or target name is different."
     exit 1

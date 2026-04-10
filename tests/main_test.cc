@@ -194,6 +194,120 @@ TEST(TimersTest, TimerSyncTrigger) {
     LL_TIM_SetSlaveMode(TIM8, LL_TIM_SLAVEMODE_DISABLED);
     LL_TIM_SetTriggerOutput(TIM1, LL_TIM_TRGO_RESET);
 }
+
+TEST(TimersTest, TimerSyncReverse) {
+    printf("\n--- Starting TimerSyncReverse (TIM8 -> TIM1) ---\n");
+    
+    // Enable clocks
+    LL_APB2_GRP1_EnableClock(LL_APB2_GRP1_PERIPH_TIM1);
+    LL_APB2_GRP1_EnableClock(LL_APB2_GRP1_PERIPH_TIM8);
+    
+    // Master timer: TIM8
+    printf("Configuring TIM8 (Master)\n");
+    LL_TIM_SetAutoReload(TIM8, 100000);
+    LL_TIM_SetPrescaler(TIM8, 0);
+    LL_TIM_SetCounter(TIM8, 0);
+    LL_TIM_SetTriggerOutput(TIM8, LL_TIM_TRGO_ENABLE);
+    
+    // Slave timer: TIM1
+    printf("Configuring TIM1 (Slave)\n");
+    LL_TIM_SetAutoReload(TIM1, 100000);
+    LL_TIM_SetPrescaler(TIM1, 0);
+    LL_TIM_SetCounter(TIM1, 0);
+    LL_TIM_SetSlaveMode(TIM1, LL_TIM_SLAVEMODE_TRIGGER);
+    LL_TIM_SetTriggerInput(TIM1, LL_TIM_TS_ITR5); // TIM8 is ITR5
+    
+    printf("Starting TIM8 (Leader)...\n");
+    LL_TIM_EnableCounter(TIM8);
+    
+    printf("Waiting for TIM1 to start...\n");
+    uint32_t start_cycles = DWT->CYCCNT;
+    uint32_t timeout_cycles = SystemCoreClock / 1000; // 1ms
+    while (!LL_TIM_IsEnabledCounter(TIM1) && (DWT->CYCCNT - start_cycles) < timeout_cycles) {
+        for (int i = 0; i < 100; i++) { asm volatile("nop"); }
+    }
+    
+    CHECK_TEXT(LL_TIM_IsEnabledCounter(TIM1), "TIM1 failed to start via TRGO from TIM8 within 1ms");
+    
+    LL_TIM_SetSlaveMode(TIM1, LL_TIM_SLAVEMODE_DISABLED);
+    LL_TIM_SetTriggerOutput(TIM8, LL_TIM_TRGO_RESET);
+}
+
+TEST(TimersTest, TimerRepetitionAndResetTrigger) {
+    printf("\n--- Starting TimerRepetitionAndResetTrigger ---\n");
+    
+    // Enable clocks
+    LL_APB2_GRP1_EnableClock(LL_APB2_GRP1_PERIPH_TIM1);
+    LL_APB2_GRP1_EnableClock(LL_APB2_GRP1_PERIPH_TIM8);
+
+    // Ensure both timers are stopped and in a known state
+    LL_TIM_DisableCounter(TIM1);
+    LL_TIM_DisableCounter(TIM8);
+    LL_TIM_SetSlaveMode(TIM1, LL_TIM_SLAVEMODE_DISABLED);
+    LL_TIM_SetSlaveMode(TIM8, LL_TIM_SLAVEMODE_DISABLED);
+    LL_TIM_SetTriggerOutput(TIM1, LL_TIM_TRGO_RESET);
+    LL_TIM_SetTriggerOutput(TIM8, LL_TIM_TRGO_RESET);
+    LL_TIM_SetCounter(TIM1, 0);
+    LL_TIM_SetCounter(TIM8, 0);
+
+    printf("TIM8 initial: CNT=%d, EN=%d, SMCR=%08x\n", 
+           (int)LL_TIM_GetCounter(TIM8), (int)LL_TIM_IsEnabledCounter(TIM8), (unsigned int)TIM8->SMCR);
+    
+    // Master: TIM1
+    printf("Configuring TIM1 (Master), RCR=2\n");
+    LL_TIM_SetAutoReload(TIM1, 10000);
+    LL_TIM_SetPrescaler(TIM1, 0);
+    LL_TIM_SetRepetitionCounter(TIM1, 2); // Update every 3 overflows
+    LL_TIM_SetTriggerOutput(TIM1, LL_TIM_TRGO_RESET); // Default to Reset for now
+    LL_TIM_GenerateEvent_UPDATE(TIM1); // Reload RCR and repetitionsLeft
+    LL_TIM_SetTriggerOutput(TIM1, LL_TIM_TRGO_UPDATE); // Switch to Update mode for synchronization
+    LL_TIM_SetCounter(TIM1, 0);
+
+    // Slave: TIM8
+    printf("Configuring TIM8 (Slave), Combined Reset + Trigger\n");
+    LL_TIM_SetAutoReload(TIM8, 60000);
+    LL_TIM_SetPrescaler(TIM8, 0);
+    LL_TIM_SetCounter(TIM8, 0);
+    // Combined Reset + Trigger is SMS=1000. 
+    // In G4, SMS[3] is bit 16 of SMCR.
+#ifdef LL_TIM_SLAVEMODE_COMBINED_RESET_TRIGGER
+    LL_TIM_SetSlaveMode(TIM8, LL_TIM_SLAVEMODE_COMBINED_RESET_TRIGGER);
+#else
+    // SMS[2:0] is bits 0:2. SMS[3] is bit 16.
+    // So 1000 (binary) means bit 16 set, bits 0:2 cleared.
+    MODIFY_REG(TIM8->SMCR, TIM_SMCR_SMS | (1 << 16), (1 << 16));
+#endif
+    LL_TIM_SetTriggerInput(TIM8, LL_TIM_TS_ITR0); // TIM1 is ITR0 for TIM8
+    
+    printf("Starting TIM1...\n");
+    LL_TIM_EnableCounter(TIM1);
+    
+    printf("Waiting for timers to run (35ms simulation time)...\n");
+    // 35ms at 100MHz is 3,500,000 cycles
+    // CPU frequency is 170MHz, so we wait for 59,500,000 CPU cycles.
+    uint32_t start_cycles = DWT->CYCCNT;
+    while((DWT->CYCCNT - start_cycles) < 60000000) {
+        for (int i = 0; i < 1000; i++) { asm volatile("nop"); }
+    }
+
+    uint32_t cnt1 = LL_TIM_GetCounter(TIM1);
+    uint32_t cnt8 = LL_TIM_GetCounter(TIM8);
+    printf("At T~35ms: TIM1_CNT=%u, TIM8_CNT=%u\n", (unsigned int)cnt1, (unsigned int)cnt8);
+
+    // Total cycles passed (timer units) = 60,000,000 / 1.7 = 35,294,117 ?
+    // Actually, TIM1 and DWT are both 100MHz in REPL, so 1:1.
+    // So 35,294,117 timer cycles passed.
+    // 35,294,117 / 30,000 = 1176 full periods.
+    // 35,294,117 % 30,000 = 14,117.
+    // So TIM8 should be around 14117.
+    
+    CHECK_TEXT(cnt8 > 0, "TIM8 was never triggered");
+    CHECK_TEXT(cnt8 < 30000, "TIM8 counter too high - should reset every 30k cycles");
+    CHECK_TEXT(cnt8 > 5000, "TIM8 counter too low - either frequency mismatch or didn't start");
+    LL_TIM_DisableCounter(TIM1);
+    LL_TIM_DisableCounter(TIM8);
+    LL_TIM_SetSlaveMode(TIM8, LL_TIM_SLAVEMODE_DISABLED);
+}
 #endif
 
 #if 0
