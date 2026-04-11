@@ -2,3 +2,5 @@ build
 !.settings
 
 *.log*
+
+__pycache__
