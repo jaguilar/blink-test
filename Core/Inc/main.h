@@ -42,6 +42,7 @@ extern "C" {
 #include "stm32g4xx_ll_spi.h"
 #include "stm32g4xx_ll_tim.h"
 #include "stm32g4xx_ll_gpio.h"
+#include "stm32g4xx_ll_usart.h"
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */

@@ -187,6 +187,7 @@ void InitGpio(const GpioEntry& entry);
 void GpioAssert(const GpioEntry& entry);
 void GpioDeassert(const GpioEntry& entry);
 void InitTimer(const StTimerMotorConfig& config);
+void ResetAllTimers();
 uint32_t SyncReadSpi(const AsyncTimerSpiConfig& config, uint16_t address);
 
 // Returns the ITR value that routes the TRGO of the given source timer to the

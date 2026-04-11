@@ -75,7 +75,41 @@ void InitTimer(const StTimerMotorConfig& config) {
   // running.
   LL_TIM_EnableAllOutputs(config.timer());
   LL_TIM_GenerateEvent_UPDATE(config.timer());
-}  // namespace internal
+}
+
+void ResetAllTimers() {
+  TIM_TypeDef* timers[] = {TIM1, TIM8, TIM20};
+  const char* names[] = {"TIM1", "TIM8", "TIM20"};
+  for (int i = 0; i < 3; ++i) {
+    auto* tim = timers[i];
+    auto name = names[i];
+    uint32_t smcr_before = tim->SMCR;
+    LL_TIM_DisableCounter(tim);
+    tim->CR1 = 0;
+    tim->CR2 = 0;
+    tim->SMCR = 0;
+    tim->DIER = 0;
+    tim->SR = 0;
+    tim->EGR = TIM_EGR_UG;
+    tim->CCMR1 = 0;
+    tim->CCMR2 = 0;
+    tim->CCER = 0;
+    tim->CNT = 0;
+    tim->PSC = 0;
+    tim->ARR = 0xFFFF;
+    tim->CCR1 = 0;
+    tim->CCR2 = 0;
+    tim->CCR3 = 0;
+    tim->CCR4 = 0;
+    tim->BDTR = 0;
+    tim->DCR = 0;
+    tim->AF1 = 0;
+    tim->AF2 = 0;
+    tim->TISEL = 0;
+    tim->OR = 0;
+    printf("  Reset %s: SMCR 0x%lx -> 0x%lx\n", name, (unsigned long)smcr_before, (unsigned long)tim->SMCR);
+  }
+}
 
 uint32_t SyncReadSpi(const AsyncTimerSpiConfig& config, uint16_t address) {
   assert(!LL_TIM_IsEnabledCounter(config.tim()) &&
