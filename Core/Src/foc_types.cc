@@ -213,8 +213,8 @@ uint32_t TimNCh2DmaReq(TIM_TypeDef* tim) {
 
 }  // namespace internal
 
-const char* AS5048ReadAngleCommandBuf() {
-  static const char buf[] = {0xFF, 0xFF, 0x00, 0x00};
+const uint16_t* AS5048ReadAngleCommandBuf() {
+  alignas(uint16_t) static const uint16_t buf[] = {0xFFFF, 0x0000};
   return buf;
 }
 

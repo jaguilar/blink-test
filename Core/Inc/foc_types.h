@@ -110,6 +110,8 @@ struct AsyncTimerSpiConfig {
   // tx DMA trigger.
   uint32_t timer_channel_csn;
 
+  uint32_t spi_baud_rate = LL_SPI_BAUDRATEPRESCALER_DIV16;
+
   TIM_TypeDef* tim() const {
     return reinterpret_cast<TIM_TypeDef*>(timer_base);
   }
@@ -124,7 +126,7 @@ struct AsyncTimerSpiConfig {
 
 // A buffer containing one read angle command and one nop command for the
 // AS5048A.
-const char* AS5048ReadAngleCommandBuf();
+const uint16_t* AS5048ReadAngleCommandBuf();
 
 // This class is designed to fetch SPI readings from the AS5048A with very exact
 // timing, triggered by a source timer. It takes approximately 4us to complete
@@ -160,6 +162,7 @@ class AsyncTimerAS5048ASpi : public Sensor {
   void update() override;
 
   float getSensorAngle() override { return angle_; }
+  const uint16_t* getRawRxBuf() const { return spi_rx_buf_; }
 
   int needsSearch() override { return false; }
 
@@ -176,7 +179,7 @@ class AsyncTimerAS5048ASpi : public Sensor {
   float angle_ = 0.0f;  // Sensor angle in radians as of the latest update().
 
   uint32_t csn_assert_timer_tick_;
-  char spi_rx_buf_[4];
+  alignas(uint32_t) uint16_t spi_rx_buf_[2];
   volatile bool pending_dma_ = false;
 };
 
@@ -417,9 +420,9 @@ void AsyncTimerAS5048ASpi<config>::init() {
       .Mode = LL_SPI_MODE_MASTER,
       .DataWidth = LL_SPI_DATAWIDTH_16BIT,
       .ClockPolarity = LL_SPI_POLARITY_LOW,
-      .ClockPhase = LL_SPI_PHASE_1EDGE,
+      .ClockPhase = LL_SPI_PHASE_2EDGE,
       .NSS = LL_SPI_NSS_SOFT,
-      .BaudRate = LL_SPI_BAUDRATEPRESCALER_DIV16,
+      .BaudRate = config.spi_baud_rate,
       .BitOrder = LL_SPI_MSB_FIRST,
   };
   LL_SPI_Init(spi(), &spi_init);
@@ -436,17 +439,21 @@ void AsyncTimerAS5048ASpi<config>::init() {
       .Priority = LL_DMA_PRIORITY_MEDIUM,
   };
   LL_DMA_Init(config.rx_dma(), config.spi_rx_dma_channel, &rx_dma_init);
+  LL_DMA_SetMemorySize(config.rx_dma(), config.spi_rx_dma_channel, LL_DMA_MDATAALIGN_HALFWORD);
+  LL_DMA_SetPeriphSize(config.rx_dma(), config.spi_rx_dma_channel, LL_DMA_PDATAALIGN_HALFWORD);
 
   LL_DMA_InitTypeDef tx_dma_init = {
       .Direction = LL_DMA_DIRECTION_MEMORY_TO_PERIPH,
       .PeriphOrM2MSrcIncMode = LL_DMA_PERIPH_NOINCREMENT,
       .MemoryOrM2MDstIncMode = LL_DMA_MEMORY_INCREMENT,
       .PeriphOrM2MSrcDataSize = LL_DMA_PDATAALIGN_HALFWORD,
-      .MemoryOrM2MDstDataSize = LL_DMA_PDATAALIGN_HALFWORD,
+      .MemoryOrM2MDstDataSize = LL_DMA_MDATAALIGN_HALFWORD,
       .NbData = 2,
       .Priority = LL_DMA_PRIORITY_MEDIUM,
   };
   LL_DMA_Init(config.tx_dma(), config.spi_tx_dma_channel, &tx_dma_init);
+  LL_DMA_SetMemorySize(config.tx_dma(), config.spi_tx_dma_channel, LL_DMA_MDATAALIGN_HALFWORD);
+  LL_DMA_SetPeriphSize(config.tx_dma(), config.spi_tx_dma_channel, LL_DMA_PDATAALIGN_HALFWORD);
 
   // The overall structure of the async SPI mode here is to send two SPI
   // transactions on subsequent iterations of the timer. We want to do this in a
@@ -527,15 +534,14 @@ void AsyncTimerAS5048ASpi<config>::update() {
     // Note: we assume that the DMA transaction has completed by the time
     // update() is called, so we can just read the value from the SPI data
     // register.
-    raw_angle =
-        ((static_cast<uint16_t>(spi_rx_buf_[2]) << 8) | spi_rx_buf_[3]) &
-        0x3FFF;
+    // The second word contains the 14-bit angle Result for AS5048A.
+    raw_angle = spi_rx_buf_[1] & 0x3FFF;
     pending_dma_ = false;
   } else {
     raw_angle = internal::SyncReadSpi(config, 0x3FFF);
   }
-  angle_ = static_cast<float>(raw_angle) /
-           (4096.0f * 2.0f * static_cast<float>(M_PI));
+  angle_ = (static_cast<float>(raw_angle) / 16384.0f) * 2.0f *
+           static_cast<float>(M_PI);
 
   Sensor::update();
 }
