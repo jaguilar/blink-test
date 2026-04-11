@@ -64,6 +64,7 @@ list(REMOVE_ITEM CMAKE_C_IMPLICIT_LINK_LIBRARIES ob)
 
 subdirs(lib/stm32_arduino_shim)
 subdirs(lib/Arduino-FOC)
+subdirs(lib/lwrb)
 
 # Add linked libraries
 target_link_libraries(${CMAKE_PROJECT_NAME}
@@ -72,6 +73,7 @@ target_link_libraries(${CMAKE_PROJECT_NAME}
     FreeRTOS
     Arduino
     Arduino-FOC
+    lwrb
     # Add user defined libraries
 )
 
