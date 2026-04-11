@@ -4,6 +4,6 @@
 [submodule "lib/stm32_arduino_shim"]
 	path = lib/stm32_arduino_shim
 	url = git@github.com:jaguilar/stm32_arduino_shim.git
-[submodule "lib/renode"]
-	path = lib/renode
-	url = git@github.com:jaguilar/renode.git
+[submodule "lib/lwrb"]
+	path = lib/lwrb
+	url = https://github.com/MaJerle/lwrb
