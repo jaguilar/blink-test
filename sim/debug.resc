@@ -1,9 +1,0 @@
-mach create "stm32g474_debug"
-i $ORIGIN/common.resc
-
-runMacro $reset
-
-# Start GDB server on port 3333
-machine StartGdbServer 3333
-
-echo "GDB server started on port 3333. Connect with arm-none-eabi-gdb."

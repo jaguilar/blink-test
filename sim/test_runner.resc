@@ -1,5 +1,0 @@
-mach create "stm32g474_test"
-i $ORIGIN/common.resc
-
-runMacro $reset
-start
