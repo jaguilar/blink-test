@@ -80,19 +80,6 @@ class StTimerMotorDriver : public BLDCDriver {
   void setPwm(float Ua, float Ub, float Uc) override;
   void setPhaseState(PhaseState sa, PhaseState sb, PhaseState sc) override;
 
-  // Causes this motor's PWM to start following the start of another motor.
-  // You can provide a phase offset in terms of fractions of a revolution.
-  // This may be called after the motor is enabled, which will have the effect
-  // of stopping the motor until the cycle of the leader motor. This is useful
-  // for ensuring that multiple motors are out of phase with each other.
-  //
-  // This operation claims TRGO and channel 4 of the leader motor, until the
-  // first period of the leader motor has completed. The leader motor should not
-  // have been started when Follow is called.
-  template <StTimerMotorConfig leader_config>
-  void Follow(StTimerMotorDriver<leader_config>& leader,
-              float phase_offset = 0.0f);
-
  private:
   TIM_TypeDef* timer() const {
     return reinterpret_cast<TIM_TypeDef*>(config.timer_base);
@@ -273,7 +260,25 @@ inline uint32_t NsToTimerTicks(uint32_t ns) {
          "This software assumes that the PCLK frequencies match the system "
          "core clock frequency.");
 #endif
-  return std::ceil((1.0 * ns) / (1e9 / SystemCoreClock));
+  return static_cast<uint32_t>(std::ceil((1.0 * ns) / (1e9 / SystemCoreClock)));
+}
+
+inline uint32_t GetRuntimeTRGOItrValue(uintptr_t leader_timer_base) {
+#define CONSIDER(leader, itr)               \
+  if (leader_timer_base == leader##_BASE) { \
+    return LL_TIM_TS_##itr;                 \
+  }
+  // See RM0440 section 11.3.1.
+  CONSIDER(TIM1, ITR0);
+  CONSIDER(TIM2, ITR1);
+  CONSIDER(TIM3, ITR2);
+  CONSIDER(TIM4, ITR3);
+  CONSIDER(TIM5, ITR4);
+  CONSIDER(TIM8, ITR5);
+  CONSIDER(TIM15, ITR6);
+  CONSIDER(TIM20, ITR9);
+#undef CONSIDER
+  return 0;
 }
 
 }  // namespace internal
@@ -290,12 +295,15 @@ int StTimerMotorDriver<config>::init() {
   return 0;
 }
 
+// Enable turns on the outputs. All of the timer counters should already be
+// running because they should be started with StartOutOfPhase.
 template <StTimerMotorConfig config>
 void StTimerMotorDriver<config>::enable() {
-  if (!is_follower_) {
-    LL_TIM_SetCounter(timer(), 0);
-    LL_TIM_EnableCounter(timer());
-  }
+  assert(LL_TIM_IsEnabledCounter(config.timer()));
+  LL_TIM_OC_SetMode(timer(), LL_TIM_CHANNEL_CH1, LL_TIM_OCMODE_PWM2);
+  LL_TIM_OC_SetMode(timer(), LL_TIM_CHANNEL_CH2, LL_TIM_OCMODE_PWM2);
+  LL_TIM_OC_SetMode(timer(), LL_TIM_CHANNEL_CH3, LL_TIM_OCMODE_PWM2);
+  LL_TIM_EnableAllOutputs(config.timer());
 }
 
 template <StTimerMotorConfig config>
@@ -350,26 +358,55 @@ void StTimerMotorDriver<config>::setPhaseState(PhaseState sa, PhaseState sb,
   }
 }
 
-template <StTimerMotorConfig config>
-template <StTimerMotorConfig leader_config>
-void StTimerMotorDriver<config>::Follow(
-    StTimerMotorDriver<leader_config>& leader, float phase_offset) {
-  assert(!LL_TIM_IsEnabledCounter(leader.timer()) &&
-         !LL_TIM_IsEnabledCounter(timer()) &&
-         "Motors must not have been started when Follow is called");
-  is_follower_ = true;
+inline void StartOutOfPhase(std::span<TIM_TypeDef*> timers, uint32_t arr) {
+  if (timers.empty()) return;
 
-  const uint32_t ticks = phase_offset * leader.arr_value_ * 2;
-  LL_TIM_SetCompareCH4(leader.timer(), ticks);
-  LL_TIM_OC_SetMode(leader.timer(), LL_TIM_CHANNEL_CH4, LL_TIM_OCMODE_FROZEN);
-  LL_TIM_SetTriggerOutput(leader.timer(), LL_TIM_TRGO_OC4REF);
-  LL_TIM_SetSlaveMode(timer(), LL_TIM_SLAVEMODE_TRIGGER);
-  LL_TIM_SetCounter(timer(), 0);
+  uint32_t n = timers.size();
 
-  // See RM0440 section 11.3.1 for the trigger-input-to-trgo mapping.
-  LL_TIM_SetTriggerInput(
-      config.timer(),
-      internal::GetTRGOItrValue<leader_config.timer_base, config.timer_base>());
+  // Set ARR for all timers.
+  for (auto* tim : timers) {
+    LL_TIM_SetAutoReload(tim, arr);
+  }
+
+  // Calculate phase delay. We double the delay if center-aligned (up-down) mode
+  // is used.
+  uint32_t phase_delay = arr / n;
+  if (LL_TIM_GetCounterMode(timers[0]) != LL_TIM_COUNTERMODE_UP &&
+      LL_TIM_GetCounterMode(timers[0]) != LL_TIM_COUNTERMODE_DOWN) {
+    phase_delay *= 2;
+  }
+
+  for (uint32_t i = 0; i < n; ++i) {
+    TIM_TypeDef* tim = timers[i];
+    LL_TIM_DisableCounter(tim);
+    LL_TIM_OC_SetCompareCH1(tim, phase_delay);
+    LL_TIM_CC_EnableChannel(tim, LL_TIM_CHANNEL_CH1);
+    LL_TIM_SetCounter(tim, 0);
+    LL_TIM_SetTriggerOutput(tim, LL_TIM_TRGO_CC1IF);
+    LL_TIM_SetAutoReload(tim, arr);
+  }
+
+  for (int i = (int)n - 1; i > 0; --i) {
+    TIM_TypeDef* tim = timers[i];
+    TIM_TypeDef* leader = timers[i - 1];
+    uint32_t itr =
+        internal::GetRuntimeTRGOItrValue(reinterpret_cast<uintptr_t>(leader));
+    LL_TIM_SetTriggerInput(tim, itr);
+    LL_TIM_SetSlaveMode(tim, LL_TIM_SLAVEMODE_TRIGGER);
+  }
+
+  LL_TIM_EnableCounter(timers[0]);
+
+  // Wait for the last timer to start. At this point the timers are running and
+  // out of phase from one another.
+  while (!LL_TIM_IsEnabledCounter(timers[n - 1])) {
+  }
+
+  // Reset the channel 1 to its initial state.
+  for (auto* tim : timers) {
+    LL_TIM_OC_SetCompareCH1(tim, 0);
+    LL_TIM_CC_DisableChannel(tim, LL_TIM_CHANNEL_CH1);
+  }
 }
 
 template <AsyncTimerSpiConfig config>
