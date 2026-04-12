@@ -8,9 +8,12 @@
 #include <string.h>
 
 #include <algorithm>
+#include <atomic>
 
+#include "FreeRTOS.h"
 #include "cmsis_os2.h"
 #include "lwrb/lwrb.h"
+#include "task.h"
 
 #define UART_DMA_RX_BUFFER_SIZE 1024
 #define UART_DMA_TX_BUFFER_SIZE 1024
@@ -30,8 +33,8 @@ static osEventFlagsId_t uart_event_flags;
 extern DMA_HandleTypeDef hdma_usart1_rx;
 extern DMA_HandleTypeDef hdma_usart1_tx;
 
-static volatile bool tx_dma_busy = false;
-static volatile size_t tx_dma_pending_len = 0;
+static std::atomic<bool> tx_dma_busy{false};
+static std::atomic<size_t> tx_dma_pending_len{0};
 static size_t last_rx_pos = 0;
 
 extern "C" void UartDma_Init(void) {
@@ -56,43 +59,101 @@ static void Start_Tx_DMA(void) {
     tx_dma_busy = true;
     tx_dma_pending_len = len;
     void* data = lwrb_get_linear_block_read_address(&tx_ring_buffer);
-    HAL_UART_Transmit_DMA(&huart1, (uint8_t*)data, (uint16_t)len);
+
+    if (HAL_UART_Transmit_DMA(&huart1, (uint8_t*)data, (uint16_t)len) !=
+        HAL_OK) {
+      // If we failed to start, reset busy flag so we can try again
+      tx_dma_busy = false;
+      tx_dma_pending_len = 0;
+    }
   }
+}
+
+static bool CanBlock(void) {
+  return (xPortIsInsideInterrupt() == pdFALSE &&
+          xTaskGetSchedulerState() == taskSCHEDULER_RUNNING);
 }
 
 extern "C" int _write(int file, char* ptr, int len) {
   (void)file;
+  if (len <= 0) return 0;
 
-  // Non-blocking write to ring buffer
-  // In a more robust implementation, we might block if the ring buffer is full
-  size_t written = lwrb_write(&tx_ring_buffer, ptr, (size_t)len);
+  bool can_block = CanBlock();
+  size_t total_written = 0;
 
-  // Start DMA if not already busy
-  osKernelLock();  // Protect flag check
-  if (!tx_dma_busy) {
-    Start_Tx_DMA();
+  if (can_block) {
+    // Blocking context: loop until everything is written
+    while (total_written < (size_t)len) {
+      taskENTER_CRITICAL();
+      size_t written = lwrb_write(&tx_ring_buffer, ptr + total_written,
+                                  (size_t)len - total_written);
+      total_written += written;
+      if (!tx_dma_busy) {
+        Start_Tx_DMA();
+      }
+      taskEXIT_CRITICAL();
+
+      if (total_written < (size_t)len) {
+        // Wait for buffer space (triggered by TxCpltCallback)
+        osEventFlagsWait(uart_event_flags, UART_EVENT_TX_COMPLETE,
+                         osFlagsWaitAny, 100);
+      }
+    }
+  } else {
+    // Non-blocking context (ISR or early boot): write with "UARTFULL" warning
+    // if needed
+    size_t free_space = lwrb_get_free(&tx_ring_buffer);
+    static const char warning[] = "UARTFULL\n";
+    size_t warn_len = strlen(warning);
+
+    if (free_space >= (size_t)len) {
+      total_written = lwrb_write(&tx_ring_buffer, ptr, (size_t)len);
+    } else {
+      // Not enough space for the full message.
+      // Truncate message to fit "UARTFULL\n" if possible.
+      size_t msg_to_write =
+          (free_space > warn_len) ? (free_space - warn_len) : 0;
+      size_t warn_to_write =
+          (free_space > msg_to_write) ? (free_space - msg_to_write) : 0;
+      if (warn_to_write > warn_len) warn_to_write = warn_len;
+
+      if (msg_to_write > 0) {
+        lwrb_write(&tx_ring_buffer, ptr, msg_to_write);
+      }
+      if (warn_to_write > 0) {
+        lwrb_write(&tx_ring_buffer, warning, warn_to_write);
+      }
+      total_written = (size_t)len;  // Pretend we wrote it all to satisfy printf
+    }
+
+    if (!tx_dma_busy) {
+      Start_Tx_DMA();
+    }
   }
-  osKernelUnlock();
 
-  return (int)written;
+  return static_cast<int>(total_written);
 }
 
 extern "C" int _read(int file, char* ptr, int len) {
   (void)file;
   if (len <= 0) return 0;
 
-  while (lwrb_get_full(&rx_ring_buffer) == 0) {
-    // Wait for data event
-    osEventFlagsWait(uart_event_flags, UART_EVENT_RX_DATA, osFlagsWaitAny,
-                     osWaitForever);
+  bool can_block = CanBlock();
+
+  if (can_block) {
+    while (lwrb_get_full(&rx_ring_buffer) == 0) {
+      // Wait for data event
+      osEventFlagsWait(uart_event_flags, UART_EVENT_RX_DATA, osFlagsWaitAny,
+                       osWaitForever);
+    }
+    taskENTER_CRITICAL();
+    size_t read_bytes = lwrb_read(&rx_ring_buffer, ptr, (size_t)len);
+    taskEXIT_CRITICAL();
+    return (int)read_bytes;
+  } else {
+    // Non-blocking: just read whatever is there
+    return (int)lwrb_read(&rx_ring_buffer, ptr, (size_t)len);
   }
-
-  // Critical section for reading from ring buffer as requested
-  osKernelLock();
-  size_t read_bytes = lwrb_read(&rx_ring_buffer, ptr, (size_t)len);
-  osKernelUnlock();
-
-  return (int)read_bytes;
 }
 
 // HAL Callbacks
