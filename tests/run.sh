@@ -11,16 +11,21 @@ YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
 # --- Configuration ---
-# Path to STM32CubeProgrammer CLI
-PROGRAMMER="${STM32_PROGRAMMER_CLI:-/home/jaguilar/.local/share/stm32cube/bundles/programmer/2.22.0+st.1/bin/STM32_Programmer_CLI}"
-BUILD_DIR="build"
-ELF_FILE="$BUILD_DIR/tests/blink-tests.elf"
-UART_DEV="/dev/ttyUSB0"
+if [ -f local.env ]; then
+    set -a
+    source local.env
+    set +a
+fi
+
+BUILD_DIR="${BUILD_DIR:-build}"
+TARGET="blink-tests"
+UART_DEV="${UART_PORT:-/dev/ttyUSB0}"
 
 show_help() {
     echo "Usage: $0 [options] [cmake_args...]"
     echo "Options:"
     echo "  --hil        Build, reset device, and start UART monitor (default)"
+    echo "  --target T   Set the test binary target (default: blink-tests)"
     echo "  --build      Build only"
     echo "  --flash      Build and reset device (no monitor)"
     echo "  --monitor    Start UART monitor only (no build/flash)"
@@ -37,6 +42,7 @@ CMAKE_ARGS=()
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --hil)     MODE="hil"; shift ;;
+        --target)  TARGET="$2"; shift 2 ;;
         --build)   MODE="build"; shift ;;
         --flash)   MODE="flash"; shift ;;
         --monitor) MODE="monitor"; shift ;;
@@ -44,6 +50,8 @@ while [[ $# -gt 0 ]]; do
         *)         CMAKE_ARGS+=("$1"); shift ;;
     esac
 done
+
+ELF_FILE="$BUILD_DIR/tests/$TARGET.elf"
 
 # --- 1. Build Phase ---
 if [[ "$MODE" != "monitor" ]]; then
@@ -53,8 +61,8 @@ if [[ "$MODE" != "monitor" ]]; then
         -DCMAKE_TOOLCHAIN_FILE=cmake/gcc-arm-none-eabi.cmake \
         "${CMAKE_ARGS[@]}"
 
-    echo -e "${BLUE}=== Building blink-tests ===${NC}"
-    cmake --build "$BUILD_DIR" --target blink-tests
+    echo -e "${BLUE}=== Building $TARGET ===${NC}"
+    cmake --build "$BUILD_DIR" --target "$TARGET"
 fi
 
 # --- 2. Hardware Phase ---
@@ -64,8 +72,9 @@ if [[ "$MODE" == "hil" || "$MODE" == "flash" ]]; then
         exit 1
     fi
     
-    echo -e "${GREEN}=== Resetting device via SWD ===${NC}"
-    "$PROGRAMMER" -c port=SWD -rst -run > /dev/null
+    pkill -f openocd || true
+    echo -e "${GREEN}=== Flashing $TARGET and Resetting device via SWD ===${NC}"
+    openocd -f interface/stlink.cfg -f target/stm32g4x.cfg -c "program $ELF_FILE verify reset exit"
 fi
 
 # --- 3. Monitor Phase ---

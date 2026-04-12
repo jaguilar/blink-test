@@ -14,13 +14,15 @@ extern "C" {
 
 void ExpectTimerOverflows(TIM_TypeDef* tim, uint32_t periph, const char* name) {
     printf("Testing %s clock enablement\n", name);
+    asm volatile("nop");
     LL_APB2_GRP1_EnableClock(periph);
+    printf("Clock enabled for %s\n", name);
     
-    printf("Setting %s ARR and PSC\n", name);
+    printf("Setting %s ARR and PSC...\n", name);
     LL_TIM_SetAutoReload(tim, 50);
     LL_TIM_SetPrescaler(tim, 0);
     
-    printf("Setting %s EGR UG\n", name);
+    printf("Setting %s EGR UG...\n", name);
     LL_TIM_ClearFlag_UPDATE(tim);
     LL_TIM_GenerateEvent_UPDATE(tim);
     
@@ -329,6 +331,7 @@ TEST(TimersTest, StartOutOfPhaseProductionTimers) {
   CHECK_TEXT(diff120 > 5000 && diff120 < 8000, "T20 phase vs T1 is wildly off");
 
   printf("Verifying cleanup\n");
+  stfoc::internal::ResetAllTimers();
   for (auto* tim : timers_span) {
     CHECK_EQUAL(0, tim->SMCR & (TIM_SMCR_SMS | TIM_SMCR_SMS_3));
     CHECK_EQUAL(0, tim->CR2 & TIM_CR2_MMS);

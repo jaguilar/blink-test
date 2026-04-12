@@ -32,10 +32,8 @@ add_compile_definitions(
 
 FetchContent_MakeAvailable(CppUTest)
 
-add_executable(blink-tests
+set(COMMON_TEST_SOURCES
     main_test.cc
-    test_dummy.cc
-    test_timers.cc
     ../Core/Src/main.c
     ../Core/Src/app_freertos.c
     ../Core/Src/gpio.c
@@ -51,12 +49,27 @@ add_executable(blink-tests
     ../Core/Src/syscalls.c
     ../Core/Src/uart_dma.cc
     ../startup_stm32g474xx.s
-    # Include other source files you want to test
     ../Core/Src/foc_types.cc
 )
 
+add_executable(blink-tests
+    ${COMMON_TEST_SOURCES}
+    test_dummy.cc
+    test_timers.cc
+)
+
+add_executable(spi-sensor-test
+    ${COMMON_TEST_SOURCES}
+    test_spi_sensor.cc
+)
+
+add_executable(adc-current-sense-test
+    ${COMMON_TEST_SOURCES}
+    test_adc_current_sense.cc
+)
+
 # Pull in the same libraries as the main application to be able to test them
-target_link_libraries(blink-tests
+set(TEST_LIBS
     stm32cubemx
     STM32_Drivers
     m
@@ -68,10 +81,19 @@ target_link_libraries(blink-tests
     lwrb
 )
 
+target_link_libraries(blink-tests ${TEST_LIBS})
+target_link_libraries(spi-sensor-test ${TEST_LIBS})
+target_link_libraries(adc-current-sense-test ${TEST_LIBS})
+
 # Provide basic syscalls (nosys) to resolve _read, _write, _close, etc.
-target_link_options(blink-tests PRIVATE
+set(TEST_LINK_OPTIONS
     --specs=nosys.specs
+    -u _printf_float
 )
+
+target_link_options(blink-tests PRIVATE ${TEST_LINK_OPTIONS})
+target_link_options(spi-sensor-test PRIVATE ${TEST_LINK_OPTIONS})
+target_link_options(adc-current-sense-test PRIVATE ${TEST_LINK_OPTIONS})
 
 # CTest integration needs a command to run the simulation
 # [HIL TEST PLACEHOLDER] - To be implemented
