@@ -10,8 +10,10 @@
 
 #include "common/base_classes/BLDCDriver.h"
 #include "common/base_classes/Sensor.h"
+#include "common/base_classes/CurrentSense.h"
 #include "stm32g474xx.h"
 #include "stm32g4xx.h"
+#include "stm32g4xx_ll_adc.h"
 #include "stm32g4xx_ll_dma.h"
 #include "stm32g4xx_ll_dmamux.h"
 #include "stm32g4xx_ll_gpio.h"
@@ -183,6 +185,64 @@ class AsyncTimerAS5048ASpi : public Sensor {
   volatile bool pending_dma_ = false;
 };
 
+struct Stm32AdcCurrentSenseConfig {
+  // Use invalid defaults to force the user to provide them.
+  uintptr_t adc1_base = 0;
+  uint32_t adc1_channel = 0xFFFFFFFF;
+  uintptr_t adc2_base = 0;
+  uint32_t adc2_channel = 0xFFFFFFFF;
+
+  uintptr_t dma_base = 0;
+  uint32_t adc1_dma_channel = 0xFFFFFFFF;
+  uint32_t adc2_dma_channel = 0xFFFFFFFF;
+
+  float shunt_resistance;
+  float amp_gain;
+  float v_ref = 3.3f;
+  float cal_a = 1.0f;
+  float cal_b = 1.0f;
+  float offset_a;
+  float offset_b;
+  uint32_t sampling_time = LL_ADC_SAMPLINGTIME_47CYCLES_5;
+
+  ADC_TypeDef* adc1() const { return reinterpret_cast<ADC_TypeDef*>(adc1_base); }
+  ADC_TypeDef* adc2() const { return reinterpret_cast<ADC_TypeDef*>(adc2_base); }
+  DMA_TypeDef* dma() const { return reinterpret_cast<DMA_TypeDef*>(dma_base); }
+};
+
+template <Stm32AdcCurrentSenseConfig config>
+class Stm32AdcCurrentSense : public CurrentSense {
+ public:
+  static_assert(config.adc1_base != 0 && config.adc2_base != 0, "Both ADC bases must be provided");
+  static_assert(config.adc1_channel != 0xFFFFFFFF && config.adc2_channel != 0xFFFFFFFF, "Both ADC channels must be provided");
+  static_assert(config.dma_base != 0, "DMA base must be provided");
+  static_assert(config.adc1_dma_channel != 0xFFFFFFFF && config.adc2_dma_channel != 0xFFFFFFFF, "Both DMA channels must be provided");
+
+  Stm32AdcCurrentSense() : CurrentSense() {
+    offset_ia = config.offset_a;
+    offset_ib = config.offset_b;
+  }
+
+  int init() override;
+
+  PhaseCurrent_s getPhaseCurrents() override;
+
+  // Assumes TRGO is already set to UPDATE on the leader timer.
+  template <uintptr_t leader_timer_base>
+  void SlaveToTimerUpdate();
+
+  // Fast enable/disable of the hardware trigger.
+  void EnableTrigger();
+  void DisableTrigger();
+
+  const uint16_t* GetAdc1Buffer() const { return &adc1_val_; }
+  const uint16_t* GetAdc2Buffer() const { return &adc2_val_; }
+
+ private:
+  alignas(uint32_t) uint16_t adc1_val_ = 0;
+  alignas(uint32_t) uint16_t adc2_val_ = 0;
+};
+
 // Implementations below.
 
 namespace internal {
@@ -283,6 +343,32 @@ inline uint32_t GetRuntimeTRGOItrValue(uintptr_t leader_timer_base) {
   CONSIDER(TIM20, ITR9);
 #undef CONSIDER
   return 0;
+}
+
+template <uintptr_t adc_base>
+constexpr uint32_t AdcNInjectedDmaReq() {
+  if constexpr (adc_base == ADC1_BASE) {
+    return LL_DMAMUX_REQ_ADC1;
+  } else if constexpr (adc_base == ADC2_BASE) {
+    return LL_DMAMUX_REQ_ADC2;
+  } else {
+    static_assert(false, "Unsupported ADC instance");
+    return 0;
+  }
+}
+
+template <uintptr_t leader_timer_base>
+constexpr uint32_t GetAdcTriggerForTimer() {
+  if constexpr (leader_timer_base == TIM1_BASE) {
+    return LL_ADC_REG_TRIG_EXT_TIM1_TRGO;
+  } else if constexpr (leader_timer_base == TIM8_BASE) {
+    return LL_ADC_REG_TRIG_EXT_TIM8_TRGO;
+  } else if constexpr (leader_timer_base == TIM20_BASE) {
+    return LL_ADC_REG_TRIG_EXT_TIM20_TRGO;
+  } else {
+    static_assert(false, "Unsupported leader timer for ADC trigger");
+    return 0;
+  }
 }
 
 }  // namespace internal
@@ -434,7 +520,7 @@ void AsyncTimerAS5048ASpi<config>::init() {
       .PeriphOrM2MSrcIncMode = LL_DMA_PERIPH_NOINCREMENT,
       .MemoryOrM2MDstIncMode = LL_DMA_MEMORY_INCREMENT,
       .PeriphOrM2MSrcDataSize = LL_DMA_PDATAALIGN_HALFWORD,
-      .MemoryOrM2MDstDataSize = LL_DMA_PDATAALIGN_HALFWORD,
+      .MemoryOrM2MDstDataSize = LL_DMA_MDATAALIGN_HALFWORD,
       .NbData = 2,
       .Priority = LL_DMA_PRIORITY_MEDIUM,
   };
@@ -541,7 +627,7 @@ void AsyncTimerAS5048ASpi<config>::update() {
     raw_angle = internal::SyncReadSpi(config, 0x3FFF);
   }
   angle_ = (static_cast<float>(raw_angle) / 16384.0f) * 2.0f *
-           static_cast<float>(M_PI);
+            static_cast<float>(M_PI);
 
   Sensor::update();
 }
@@ -599,6 +685,126 @@ inline void AsyncTimerAS5048ASpi<config>::AsyncReadFromMotorUpdate() {
   LL_TIM_OC_SetMode(config.tim(), config.timer_channel_csn, LL_TIM_OCMODE_PWM2);
 
   pending_dma_ = true;
+}
+
+template <Stm32AdcCurrentSenseConfig config>
+int Stm32AdcCurrentSense<config>::init() {
+  // 1. Enable Clocks
+  if (config.adc1_base == ADC1_BASE || config.adc2_base == ADC1_BASE) {
+      LL_RCC_SetADCClockSource(LL_RCC_ADC12_CLKSOURCE_SYSCLK);
+  }
+  // ADC1 and ADC2 share the same clock source and common registers on STM32G4.
+  // We should configure the common block (ADC12_COMMON).
+  LL_ADC_CommonInitTypeDef adc_common_init = {
+      .CommonClock = LL_ADC_CLOCK_SYNC_PCLK_DIV4, // 160MHz / 4 = 40MHz
+      .Multimode = LL_ADC_MULTI_INDEPENDENT,
+  };
+  LL_ADC_CommonInit(ADC12_COMMON, &adc_common_init);
+  LL_ADC_SetCommonPathInternalCh(ADC12_COMMON, LL_ADC_PATH_INTERNAL_VREFINT);
+
+  // 2. Configure ADC1
+  LL_ADC_InitTypeDef adc_init = {
+      .Resolution = LL_ADC_RESOLUTION_12B,
+      .DataAlignment = LL_ADC_DATA_ALIGN_RIGHT,
+      .LowPowerMode = LL_ADC_LP_MODE_NONE,
+  };
+  LL_ADC_Init(config.adc1(), &adc_init);
+  LL_ADC_REG_SetSequencerLength(config.adc1(), LL_ADC_REG_SEQ_SCAN_DISABLE);
+  LL_ADC_REG_SetSequencerRanks(config.adc1(), LL_ADC_REG_RANK_1, config.adc1_channel);
+  // Configure sampling time according to config.
+  LL_ADC_SetChannelSamplingTime(config.adc1(), config.adc1_channel, config.sampling_time);
+  LL_ADC_REG_SetDMATransfer(config.adc1(), LL_ADC_REG_DMA_TRANSFER_UNLIMITED);
+
+  // 3. Configure ADC2
+  LL_ADC_Init(config.adc2(), &adc_init);
+  LL_ADC_REG_SetSequencerLength(config.adc2(), LL_ADC_REG_SEQ_SCAN_DISABLE);
+  LL_ADC_REG_SetSequencerRanks(config.adc2(), LL_ADC_REG_RANK_1, config.adc2_channel);
+  LL_ADC_SetChannelSamplingTime(config.adc2(), config.adc2_channel, config.sampling_time);
+  LL_ADC_REG_SetDMATransfer(config.adc2(), LL_ADC_REG_DMA_TRANSFER_UNLIMITED);
+
+  // 4. Configure DMA
+  LL_DMA_InitTypeDef dma_init = {
+      .Direction = LL_DMA_DIRECTION_PERIPH_TO_MEMORY,
+      .Mode = LL_DMA_MODE_CIRCULAR,
+      .PeriphOrM2MSrcIncMode = LL_DMA_PERIPH_NOINCREMENT,
+      .MemoryOrM2MDstIncMode = LL_DMA_MEMORY_NOINCREMENT,
+      .PeriphOrM2MSrcDataSize = LL_DMA_PDATAALIGN_HALFWORD,
+      .MemoryOrM2MDstDataSize = LL_DMA_MDATAALIGN_HALFWORD,
+      .NbData = 1,
+      .Priority = LL_DMA_PRIORITY_HIGH,
+  };
+  LL_DMA_Init(config.dma(), config.adc1_dma_channel, &dma_init);
+  LL_DMA_SetPeriphAddress(config.dma(), config.adc1_dma_channel, LL_ADC_DMA_GetRegAddr(config.adc1(), LL_ADC_DMA_REG_REGULAR_DATA));
+  LL_DMA_SetMemoryAddress(config.dma(), config.adc1_dma_channel, reinterpret_cast<uintptr_t>(&adc1_val_));
+  LL_DMA_SetPeriphRequest(config.dma(), config.adc1_dma_channel, internal::AdcNInjectedDmaReq<config.adc1_base>());
+
+  LL_DMA_Init(config.dma(), config.adc2_dma_channel, &dma_init);
+  LL_DMA_SetPeriphAddress(config.dma(), config.adc2_dma_channel, LL_ADC_DMA_GetRegAddr(config.adc2(), LL_ADC_DMA_REG_REGULAR_DATA));
+  LL_DMA_SetMemoryAddress(config.dma(), config.adc2_dma_channel, reinterpret_cast<uintptr_t>(&adc2_val_));
+  LL_DMA_SetPeriphRequest(config.dma(), config.adc2_dma_channel, internal::AdcNInjectedDmaReq<config.adc2_base>());
+
+  LL_DMA_EnableChannel(config.dma(), config.adc1_dma_channel);
+  LL_DMA_EnableChannel(config.dma(), config.adc2_dma_channel);
+
+  // 5. Enable ADCs
+  auto enable_adc = [](ADC_TypeDef* adc) {
+    LL_ADC_DisableDeepPowerDown(adc);
+    LL_ADC_EnableInternalRegulator(adc);
+    // Wait for regulator stabilization (20us)
+    for(volatile uint32_t i=0; i<3200; i++); // ~20us at 160MHz
+    
+    LL_ADC_StartCalibration(adc, LL_ADC_SINGLE_ENDED);
+    while (LL_ADC_IsCalibrationOnGoing(adc));
+    LL_ADC_Enable(adc);
+    while (!LL_ADC_IsActiveFlag_ADRDY(adc));
+  };
+  enable_adc(config.adc1());
+  enable_adc(config.adc2());
+
+  initialized = true;
+  return 1;
+}
+
+template <Stm32AdcCurrentSenseConfig config>
+PhaseCurrent_s Stm32AdcCurrentSense<config>::getPhaseCurrents() {
+  // Convert raw values to current.
+  // I = (V_adc - V_offset) / (R_shunt * Amp_gain)
+  float counts_to_volts = config.v_ref / 4096.0f;
+  float volts_per_amp = config.shunt_resistance * config.amp_gain;
+  
+  float ia = ((static_cast<float>(adc1_val_) * counts_to_volts) - config.offset_a) / volts_per_amp * config.cal_a;
+  float ib = ((static_cast<float>(adc2_val_) * counts_to_volts) - config.offset_b) / volts_per_amp * config.cal_b;
+  float ic = -(ia + ib);
+  return {ia, ib, ic};
+}
+
+template <Stm32AdcCurrentSenseConfig config>
+template <uintptr_t leader_timer_base>
+void Stm32AdcCurrentSense<config>::SlaveToTimerUpdate() {
+  TIM_TypeDef* leader = reinterpret_cast<TIM_TypeDef*>(leader_timer_base);
+  // Verify TRGO is UPDATE.
+  assert(READ_BIT(leader->CR2, TIM_CR2_MMS) == LL_TIM_TRGO_UPDATE);
+
+  uint32_t trigger = internal::GetAdcTriggerForTimer<leader_timer_base>();
+  LL_ADC_REG_SetTriggerSource(config.adc1(), trigger);
+  LL_ADC_REG_SetTriggerEdge(config.adc1(), LL_ADC_REG_TRIG_EXT_RISING);
+  LL_ADC_REG_SetTriggerSource(config.adc2(), trigger);
+  LL_ADC_REG_SetTriggerEdge(config.adc2(), LL_ADC_REG_TRIG_EXT_RISING);
+
+  LL_ADC_REG_StartConversion(config.adc1());
+  LL_ADC_REG_StartConversion(config.adc2());
+}
+
+template <Stm32AdcCurrentSenseConfig config>
+void Stm32AdcCurrentSense<config>::EnableTrigger() {
+  LL_ADC_REG_SetTriggerEdge(config.adc1(), LL_ADC_REG_TRIG_EXT_RISING);
+  LL_ADC_REG_SetTriggerEdge(config.adc2(), LL_ADC_REG_TRIG_EXT_RISING);
+}
+
+template <Stm32AdcCurrentSenseConfig config>
+void Stm32AdcCurrentSense<config>::DisableTrigger() {
+  LL_ADC_REG_SetTriggerEdge(config.adc1(), 0); // 0 = LL_ADC_REG_TRIG_EXT_NONE
+  LL_ADC_REG_SetTriggerEdge(config.adc2(), 0);
 }
 
 }  // namespace stfoc

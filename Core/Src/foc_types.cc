@@ -69,12 +69,6 @@ void InitTimer(const StTimerMotorConfig& config) {
     LL_TIM_OC_Init(config.timer(), chan, &oc_init);
     LL_TIM_OC_EnablePreload(config.timer(), chan);
   }
-
-  // TIM1/TIM8/TIM20 are advanced timers. Their channel outputs stay gated
-  // until MOE in BDTR is set, even if CCxE is enabled and the counter is
-  // running.
-  LL_TIM_EnableAllOutputs(config.timer());
-  LL_TIM_GenerateEvent_UPDATE(config.timer());
 }
 
 void ResetAllTimers() {
