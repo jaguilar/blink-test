@@ -7,6 +7,8 @@
 
 #include "cmsis_os2.h"
 #include "foc_types.h"
+#include "stm32_motor_driver.h"
+#include "as5048a_spi_sensor.h"
 #include "stm32g474xx.h"
 #include "stm32g4xx_ll_dma.h"
 #include "stm32g4xx_ll_dmamux.h"

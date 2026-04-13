@@ -18,6 +18,8 @@
 
 #include "CppUTest/TestHarness.h"
 #include "foc_types.h"
+#include "stm32_motor_driver.h"
+#include "as5048a_spi_sensor.h"
 #include "stm32g4xx_ll_spi.h"
 #include "stm32g4xx_ll_bus.h"
 #include "stm32g4xx_ll_gpio.h"

@@ -321,12 +321,7 @@ TEST(TimersTest, StartOutOfPhaseProductionTimers) {
   printf("Phasing Rel T1: T8=%ld, T20=%ld (Expected 3333, 6666)\n",
          (long)diff18, (long)diff120);
 
-  // Reading latency in Renode is ~500 cycles per call based on previous logs.
-  // Expected diff18 = 3333 - latency = ~2800.
-  // Expected diff120 = 6666 - 2*latency = ~5600.
-
   // Check that we are clearly out of phase and close to the expected shift.
-  // We use a generous +/- 500 cycle window for simulation jitter.
   CHECK_TEXT(diff18 > 2000 && diff18 < 4000, "T8 phase vs T1 is wildly off");
   CHECK_TEXT(diff120 > 5000 && diff120 < 8000, "T20 phase vs T1 is wildly off");
 

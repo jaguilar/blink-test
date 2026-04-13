@@ -3,6 +3,8 @@
 
 #include "CppUTest/TestHarness.h"
 #include "foc_types.h"
+#include "stm32_motor_driver.h"
+#include "stm32_adc_current_sense.h"
 #include "stm32g4xx_ll_adc.h"
 #include "stm32g4xx_ll_bus.h"
 #include "stm32g4xx_ll_gpio.h"

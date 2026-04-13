@@ -47,9 +47,12 @@ set(COMMON_TEST_SOURCES
     ../Core/Src/stm32g4xx_hal_timebase_tim.c
     ../Core/Src/sysmem.c
     ../Core/Src/syscalls.c
-    ../Core/Src/uart_dma.cc
+    ../src/uart_dma.cc
     ../startup_stm32g474xx.s
-    ../Core/Src/foc_types.cc
+    ../src/foc_types.cc
+    ../src/stm32_motor_driver.cc
+    ../src/as5048a_spi_sensor.cc
+    ../src/stm32_adc_current_sense.cc
 )
 
 add_executable(blink-tests
@@ -84,6 +87,13 @@ set(TEST_LIBS
 target_link_libraries(blink-tests ${TEST_LIBS})
 target_link_libraries(spi-sensor-test ${TEST_LIBS})
 target_link_libraries(adc-current-sense-test ${TEST_LIBS})
+
+foreach(test_exe blink-tests spi-sensor-test adc-current-sense-test)
+    target_include_directories(${test_exe} PRIVATE
+        ../Core/Inc
+        ../src
+    )
+endforeach()
 
 # Provide basic syscalls (nosys) to resolve _read, _write, _close, etc.
 set(TEST_LINK_OPTIONS
