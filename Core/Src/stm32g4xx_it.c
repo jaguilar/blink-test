@@ -298,5 +298,15 @@ void DMA2_Channel2_IRQHandler(void) {
 }
 
 /* USER CODE BEGIN 1 */
+/**
+  * @brief This function handles EXTI line[15:10] interrupts.
+  */
+void EXTI15_10_IRQHandler(void)
+{
+  if (LL_EXTI_IsActiveFlag_0_31(LL_EXTI_LINE_13) != RESET)
+  {
+    LL_EXTI_ClearFlag_0_31(LL_EXTI_LINE_13);
+  }
+}
 
 /* USER CODE END 1 */

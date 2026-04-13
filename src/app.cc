@@ -29,6 +29,7 @@ using namespace stfoc;
 
 volatile bool spi_dma_complete = false;
 volatile bool spi_dma_error = false;
+volatile bool is_sleeping = false;
 
 constexpr uint32_t kClockFrequencyHz = 160000000;
 
@@ -67,6 +68,40 @@ constexpr auto GetAsyncSpi1Config() {
 }
 AsyncTimerAS5048ASpi<GetAsyncSpi1Config()> async_spi1;
 
+void ExitSleepMode();
+
+void EnterSleepMode() {
+  std::printf("Entering sleep mode...\n");
+  is_sleeping = true;
+
+  // Turn off LED
+  LL_GPIO_ResetOutputPin(GPIOC, LL_GPIO_PIN_6);
+
+  // Stop motor timer and SPI trigger timer
+  LL_TIM_DisableCounter(TIM1);
+  LL_TIM_DisableCounter(TIM2);
+
+  // Enter sleep mode. __WFI() will wait for an interrupt (EXTI13).
+  // SysTick will wake it up, so we loop until the button is pressed (goes HIGH).
+  while (LL_GPIO_IsInputPinSet(GPIOC, LL_GPIO_PIN_13) == 0) {
+    HAL_PWR_EnterSLEEPMode(PWR_MAINREGULATOR_ON, PWR_SLEEPENTRY_WFI);
+  }
+
+  ExitSleepMode();
+}
+
+void ExitSleepMode() {
+  std::printf("Waking up!\n");
+  is_sleeping = false;
+
+  // Re-enable timers
+  LL_TIM_EnableCounter(TIM1);
+  LL_TIM_EnableCounter(TIM2);
+
+  // Restart SPI cycle
+  async_spi1.AsyncReadFromMotorUpdate<TIM1_BASE>();
+}
+
 }  // namespace
 }  // namespace blink
 
@@ -81,6 +116,12 @@ void Setup() {
   LL_AHB2_GRP1_EnableClock(LL_AHB2_GRP1_PERIPH_GPIOA);
   LL_AHB2_GRP1_EnableClock(LL_AHB2_GRP1_PERIPH_GPIOB);
   LL_AHB2_GRP1_EnableClock(LL_AHB2_GRP1_PERIPH_GPIOC);
+
+  LL_GPIO_InitTypeDef GPIO_InitStruct = {0};
+  GPIO_InitStruct.Pin = LL_GPIO_PIN_13;
+  GPIO_InitStruct.Mode = LL_GPIO_MODE_INPUT;
+  GPIO_InitStruct.Pull = LL_GPIO_PULL_DOWN;
+  LL_GPIO_Init(GPIOC, &GPIO_InitStruct);
 
   MX_SPI1_Init();
   MX_TIM1_Init();
@@ -106,16 +147,27 @@ void Setup() {
 
   // Start the first sensor measurement cycle.
   async_spi1.AsyncReadFromMotorUpdate<TIM1_BASE>();
+
+  // Enable EXTI15_10 interrupt for the wake button.
+  NVIC_SetPriority(EXTI15_10_IRQn, NVIC_EncodePriority(NVIC_GetPriorityGrouping(), 0, 0));
+  NVIC_EnableIRQ(EXTI15_10_IRQn);
 }
 
 void Loop() {
-  uint32_t ticks = osKernelGetTickCount();
+  uint32_t last_activity_tick = osKernelGetTickCount();
+  const uint32_t timeout_ms = 600000;  // 10 minutes
+
   while (true) {
     std::printf("Pos: %ld mrad, Vel: %ld mrad/s\n",
                 static_cast<long>(async_spi1.getAngle() * 1000.0f),
                 static_cast<long>(async_spi1.getVelocity() * 1000.0f));
-    ticks += 1000;
-    osDelayUntil(ticks);
+
+    osDelay(1000);
+
+    if (osKernelGetTickCount() - last_activity_tick > timeout_ms) {
+      EnterSleepMode();
+      last_activity_tick = osKernelGetTickCount();
+    }
   }
 }
 
@@ -133,7 +185,9 @@ void DMA1_Channel8_IRQHandler() {
     spi_dma_complete = true;
 
     // Retrigger the sensor measurement cycle for the next motor update.
-    async_spi1.AsyncReadFromMotorUpdate<TIM1_BASE>();
+    if (!is_sleeping) {
+      async_spi1.AsyncReadFromMotorUpdate<TIM1_BASE>();
+    }
   } else if (LL_DMA_IsActiveFlag_TE8(DMA1)) {
     LL_DMA_ClearFlag_TE8(DMA1);
     spi_dma_error = true;
