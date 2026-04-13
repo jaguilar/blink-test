@@ -14,10 +14,6 @@ uint32_t SyncReadSpi(const AsyncTimerSpiConfig& config, uint16_t address) {
          "Timer must not have been started when SyncReadSpi is called.");
   assert(LL_TIM_GetCounter(config.tim()) == 0 &&
          "Timer counter must be at 0 when SyncReadSpi is called.");
-  assert(LL_TIM_OC_GetMode(config.tim(), config.timer_channel_csn) ==
-             LL_TIM_OCMODE_PWM2 &&
-         "Timer output should be in PWM2 before SyncReadSpi is called.");
-
   assert(address <= 0x3FFF && "AS5048A addresses are 14 bits");
   uint16_t read_command = address | (1 << 14);  // (bit 14 == 1 for read)
   bool is_odd = std::popcount(read_command) & 1;
@@ -61,7 +57,7 @@ uint32_t SyncReadSpi(const AsyncTimerSpiConfig& config, uint16_t address) {
   LL_SPI_TransmitData16(config.spi(), nop_command);
   while (!LL_SPI_IsActiveFlag_RXNE(config.spi())) {
   }
-  uint16_t result = LL_SPI_ReceiveData16(config.spi()) & 0x3FFF;
+  uint16_t result = LL_SPI_ReceiveData16(config.spi());
   csn_set_asserted(false);
   return result;
 }

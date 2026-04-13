@@ -1,6 +1,7 @@
 #ifndef STFOC_AS5048A_SPI_SENSOR_H
 #define STFOC_AS5048A_SPI_SENSOR_H
 
+#include <cstdio>
 #include "foc_types.h"
 #include "common/base_classes/Sensor.h"
 #include "stm32g4xx_ll_spi.h"
@@ -139,6 +140,39 @@ void AsyncTimerAS5048ASpi<config>::init() {
   };
   LL_TIM_OC_Init(config.tim(), LL_TIM_CHANNEL_CH4, &oc4_init);
   LL_TIM_SetSlaveMode(config.tim(), LL_TIM_SLAVEMODE_TRIGGER);
+
+  // Synchronous diagnostic interrogation.
+  // We read twice because the first read might have an error flag set from 
+  // a previous power state or interrupted transaction.
+  internal::SyncReadSpi(config, 0x0001);
+  uint32_t diagnostic_raw = internal::SyncReadSpi(config, 0x0001);
+  bool error = (diagnostic_raw & (1 << 14)) != 0;
+  uint8_t agc = diagnostic_raw & 0xFF;
+  bool high_field = (diagnostic_raw & (1 << 11)) != 0;
+  bool low_field = (diagnostic_raw & (1 << 10)) != 0;
+  bool cordic_overflow = (diagnostic_raw & (1 << 9)) != 0;
+  bool offset_finished = (diagnostic_raw & (1 << 8)) != 0;
+
+  std::printf("AS5048A Diagnostic (0x0001): 0x%04X\n", (unsigned int)diagnostic_raw);
+  if (error) {
+    std::printf("  [ERROR] SPI Error bit set!\n");
+  }
+  std::printf("  AGC: %d\n", agc);
+  if (high_field) {
+    std::printf("  [WARNING] Magnetic field too HIGH (Magnet too close)\n");
+  } else if (low_field) {
+    std::printf("  [WARNING] Magnetic field too LOW (Magnet too far)\n");
+  } else if (agc > 0 && agc < 255) {
+    std::printf("  Magnet positioned correctly.\n");
+  } else {
+    std::printf("  [ERROR] Sensor not responding or magnet missing (AGC=%d)\n", agc);
+  }
+  if (cordic_overflow) std::printf("  [ERROR] CORDIC Overflow\n");
+  if (!offset_finished) std::printf("  [INFO] Offset compensation not finished\n");
+
+  uint32_t angle_raw = internal::SyncReadSpi(config, 0x3FFF);
+  std::printf("AS5048A Initial Angle: 0x%04X (%d raw)\n", 
+              (unsigned int)angle_raw, (int)(angle_raw & 0x3FFF));
 }
 
 template <AsyncTimerSpiConfig config>
