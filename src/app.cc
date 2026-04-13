@@ -2,20 +2,25 @@
 
 #include <cassert>
 #include <cmath>
+#include <cstdio>
 #include <span>
 #include <type_traits>
 
+#include "as5048a_spi_sensor.h"
 #include "cmsis_os2.h"
 #include "foc_types.h"
+#include "spi.h"
 #include "stm32_motor_driver.h"
-#include "as5048a_spi_sensor.h"
 #include "stm32g474xx.h"
+#include "stm32g4xx_ll_bus.h"
 #include "stm32g4xx_ll_dma.h"
 #include "stm32g4xx_ll_dmamux.h"
 #include "stm32g4xx_ll_gpio.h"
 #include "stm32g4xx_ll_rcc.h"
 #include "stm32g4xx_ll_spi.h"
 #include "stm32g4xx_ll_tim.h"
+#include "tim.h"
+#include "uart_dma.h"
 
 namespace blink {
 namespace {
@@ -70,28 +75,47 @@ using namespace blink;
 extern "C" {
 
 void Setup() {
+  LL_APB2_GRP1_EnableClock(LL_APB2_GRP1_PERIPH_TIM1);
+  LL_APB1_GRP1_EnableClock(LL_APB1_GRP1_PERIPH_TIM2);
+  LL_APB2_GRP1_EnableClock(LL_APB2_GRP1_PERIPH_SPI1);
+  LL_AHB2_GRP1_EnableClock(LL_AHB2_GRP1_PERIPH_GPIOA);
+  LL_AHB2_GRP1_EnableClock(LL_AHB2_GRP1_PERIPH_GPIOB);
+  LL_AHB2_GRP1_EnableClock(LL_AHB2_GRP1_PERIPH_GPIOC);
+
+  MX_SPI1_Init();
+  MX_TIM1_Init();
+  MX_TIM2_Init();
+
   EnsureCycleCounterEnabled();
   CheckClockFrequency();
+  UartDma_Init();
 
+  std::printf("\n--- Blink Test Startup ---\n");
+  std::printf("Initializing Motor Driver...\n");
   motor1_driver.init();
   motor1_driver.setPwm(0.25f, 0.5f, 0.75f);
 
+  std::printf("Initializing AS5048A Sensor...\n");
   async_spi1.init();
 
+  std::printf("Starting Motor Timer and Enabling Driver...\n");
+  std::printf("Starting Motor Timer and Enabling Driver...\n");
+  LL_TIM_EnableCounter(TIM1);
   motor1_driver.enable();
+  std::printf("Startup Complete. Entering Loop.\n");
+
+  // Start the first sensor measurement cycle.
+  async_spi1.AsyncReadFromMotorUpdate<TIM1_BASE>();
 }
 
 void Loop() {
+  uint32_t ticks = osKernelGetTickCount();
   while (true) {
-    spi_dma_complete = false;
-
-    LL_GPIO_ResetOutputPin(GPIOC, LL_GPIO_PIN_6);
-    async_spi1.AsyncReadFromMotorUpdate<GetMotor1Config().timer_base>();
-
-    // Busy wait.
-    while (!spi_dma_complete) {
-    }
-    assert(!spi_dma_error);
+    std::printf("Pos: %ld mrad, Vel: %ld mrad/s\n",
+                static_cast<long>(async_spi1.getAngle() * 1000.0f),
+                static_cast<long>(async_spi1.getVelocity() * 1000.0f));
+    ticks += 1000;
+    osDelayUntil(ticks);
   }
 }
 
@@ -107,6 +131,9 @@ void DMA1_Channel8_IRQHandler() {
     LL_GPIO_SetOutputPin(GPIOC, LL_GPIO_PIN_6);
     LL_DMA_ClearFlag_TC8(DMA1);
     spi_dma_complete = true;
+
+    // Retrigger the sensor measurement cycle for the next motor update.
+    async_spi1.AsyncReadFromMotorUpdate<TIM1_BASE>();
   } else if (LL_DMA_IsActiveFlag_TE8(DMA1)) {
     LL_DMA_ClearFlag_TE8(DMA1);
     spi_dma_error = true;

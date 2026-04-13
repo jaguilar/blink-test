@@ -58,9 +58,12 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     src/uart_dma.cc
 )
 
-# Add project symbols (macros)
 target_compile_definitions(${CMAKE_PROJECT_NAME} PRIVATE
     # Add user defined symbols
+)
+
+target_compile_options(${CMAKE_PROJECT_NAME} PRIVATE
+    -Wdouble-promotion
 )
 
 # Remove wrong libob.a library dependency when using cpp files
@@ -79,6 +82,9 @@ target_link_libraries(${CMAKE_PROJECT_NAME}
     Arduino-FOC
     lwrb
     # Add user defined libraries
+)
+
+target_link_options(${CMAKE_PROJECT_NAME} PRIVATE
 )
 
 # Add testing
