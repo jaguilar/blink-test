@@ -118,12 +118,7 @@ void MX_FREERTOS_Init(void) {
 void StartDefaultTask(void *argument)
 {
   /* USER CODE BEGIN StartDefaultTask */
-  HAL_UART_Transmit(&huart1, (const uint8_t*)"Hello, World!\r\n", 15,
-                    HAL_MAX_DELAY);
-  osDelay(1000);
-  HAL_UART_Transmit(&huart1, (const uint8_t*)"Hello, World2!\r\n", 15,
-                    HAL_MAX_DELAY);
-  UartDma_Init();
+  printf("FreeRTOS Task Started. Entering Setup()...\r\n");
   Setup();
   Loop();
   /* USER CODE END StartDefaultTask */
