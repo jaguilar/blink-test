@@ -4,6 +4,7 @@
 #include "foc_types.h"
 #include "common/base_classes/BLDCDriver.h"
 #include "stm32g4xx_ll_tim.h"
+#include "cmsis_os2.h"
 
 namespace stfoc {
 
@@ -12,6 +13,7 @@ struct StTimerMotorConfig {
   GpioEntry phase1_en;
   GpioEntry phase2_en;
   GpioEntry phase3_en;
+  GpioEntry drv_en;
   uint32_t pwm_freq;
   uint32_t min_dead_time_nanos;
 
@@ -61,13 +63,20 @@ int StTimerMotorDriver<config>::init() {
   internal::InitGpio(config.phase1_en);
   internal::InitGpio(config.phase2_en);
   internal::InitGpio(config.phase3_en);
+  internal::InitGpio(config.drv_en);
   internal::InitTimer(config);
+  setPwm(0.5f, 0.5f, 0.5f);
   return 0;
 }
 
 template <StTimerMotorConfig config>
 void StTimerMotorDriver<config>::enable() {
   assert(LL_TIM_IsEnabledCounter(config.timer()));
+  assert(dc_a == 0.5f && dc_b == 0.5f && dc_c == 0.5f);
+
+  internal::GpioAssert(config.drv_en);
+  osDelay(1);
+
   LL_TIM_OC_SetMode(timer(), LL_TIM_CHANNEL_CH1, LL_TIM_OCMODE_PWM2);
   LL_TIM_OC_SetMode(timer(), LL_TIM_CHANNEL_CH2, LL_TIM_OCMODE_PWM2);
   LL_TIM_OC_SetMode(timer(), LL_TIM_CHANNEL_CH3, LL_TIM_OCMODE_PWM2);
@@ -78,6 +87,8 @@ template <StTimerMotorConfig config>
 void StTimerMotorDriver<config>::disable() {
   LL_TIM_DisableCounter(timer());
   LL_TIM_SetCounter(timer(), 0);
+  LL_TIM_DisableAllOutputs(config.timer());
+  internal::GpioDeassert(config.drv_en);
   for (const auto& gpio :
        {config.phase1_en, config.phase2_en, config.phase3_en}) {
     internal::GpioDeassert(gpio);
@@ -86,6 +97,9 @@ void StTimerMotorDriver<config>::disable() {
 
 template <StTimerMotorConfig config>
 void StTimerMotorDriver<config>::setPwm(float ua, float ub, float uc) {
+  dc_a = ua;
+  dc_b = ub;
+  dc_c = uc;
   auto to_compare = [&](float duty) {
     duty = std::clamp(duty, 0.0f, 1.0f);
     return arr_value_ - static_cast<uint32_t>(std::round(max_duty_ * duty));

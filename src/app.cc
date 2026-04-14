@@ -47,6 +47,7 @@ void CheckClockFrequency() {
 constexpr auto GetMotor1Config() {
   StTimerMotorConfig config = {
       .timer_base = TIM1_BASE,
+      .drv_en = {GPIOB_BASE, LL_GPIO_PIN_0, true},
       .pwm_freq = 20'000,
       .min_dead_time_nanos = 1000,
   };
@@ -134,7 +135,6 @@ void Setup() {
   std::printf("\n--- Blink Test Startup ---\n");
   std::printf("Initializing Motor Driver...\n");
   motor1_driver.init();
-  motor1_driver.setPwm(0.25f, 0.5f, 0.75f);
 
   std::printf("Initializing AS5048A Sensor...\n");
   async_spi1.init();
