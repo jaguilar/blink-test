@@ -25,8 +25,10 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-#include "app.h"
 #include <stdio.h>
+
+#include "app.h"
+#include "uart_dma.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -73,7 +75,12 @@ int __io_putchar(int ch)
 int main(void)
 {
   /* USER CODE BEGIN 1 */
+  UartDma_BufferInit();
+  LL_AHB2_GRP1_EnableClock(LL_AHB2_GRP1_PERIPH_GPIOC);
 
+  // Turn on the LED so the user knows we're alive.
+  LL_GPIO_SetPinMode(GPIOC, LL_GPIO_PIN_6, LL_GPIO_MODE_OUTPUT);
+  LL_GPIO_SetOutputPin(GPIOC, LL_GPIO_PIN_6);
   /* USER CODE END 1 */
 
   /* MCU Configuration--------------------------------------------------------*/
@@ -97,7 +104,11 @@ int main(void)
   MX_DMA_Init();
   MX_USART1_UART_Init();
   /* USER CODE BEGIN 2 */
-  printf("BOOTING...\r\n");
+  LL_GPIO_SetOutputPin(GPIOC, LL_GPIO_PIN_6);
+  printf("\r\n--- MCU BOOT ---\r\n");
+  printf("HCLK:  %lu Hz\r\n", HAL_RCC_GetHCLKFreq());
+  printf("PCLK1: %lu Hz\r\n", HAL_RCC_GetPCLK1Freq());
+  printf("PCLK2: %lu Hz\r\n", HAL_RCC_GetPCLK2Freq());
   /* USER CODE END 2 */
 
   /* Init scheduler */
