@@ -25,9 +25,7 @@
 /* USER CODE END 0 */
 
 /* SPI1 init function */
-void MX_SPI1_Init(void)
-{
-
+void MX_SPI1_Init(void) {
   /* USER CODE BEGIN SPI1_Init 0 */
 
   /* USER CODE END SPI1_Init 0 */
@@ -89,7 +87,8 @@ void MX_SPI1_Init(void)
   LL_DMA_SetMemorySize(DMA1, LL_DMA_CHANNEL_8, LL_DMA_MDATAALIGN_HALFWORD);
 
   /* SPI1 interrupt Init */
-  NVIC_SetPriority(SPI1_IRQn, NVIC_EncodePriority(NVIC_GetPriorityGrouping(),5, 0));
+  NVIC_SetPriority(SPI1_IRQn,
+                   NVIC_EncodePriority(NVIC_GetPriorityGrouping(), 5, 0));
   NVIC_EnableIRQ(SPI1_IRQn);
 
   /* USER CODE BEGIN SPI1_Init 1 */
@@ -98,8 +97,8 @@ void MX_SPI1_Init(void)
   SPI_InitStruct.TransferDirection = LL_SPI_FULL_DUPLEX;
   SPI_InitStruct.Mode = LL_SPI_MODE_MASTER;
   SPI_InitStruct.DataWidth = LL_SPI_DATAWIDTH_16BIT;
-  SPI_InitStruct.ClockPolarity = LL_SPI_POLARITY_LOW;
-  SPI_InitStruct.ClockPhase = LL_SPI_PHASE_1EDGE;
+  SPI_InitStruct.ClockPolarity = LL_SPI_POLARITY_HIGH;
+  SPI_InitStruct.ClockPhase = LL_SPI_PHASE_2EDGE;
   SPI_InitStruct.NSS = LL_SPI_NSS_SOFT;
   SPI_InitStruct.BaudRate = LL_SPI_BAUDRATEPRESCALER_DIV16;
   SPI_InitStruct.BitOrder = LL_SPI_MSB_FIRST;
@@ -111,10 +110,8 @@ void MX_SPI1_Init(void)
   /* USER CODE BEGIN SPI1_Init 2 */
 
   /* USER CODE END SPI1_Init 2 */
-
 }
 
 /* USER CODE BEGIN 1 */
 
 /* USER CODE END 1 */
-
