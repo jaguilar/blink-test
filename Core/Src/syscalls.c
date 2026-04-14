@@ -29,6 +29,8 @@
 #include <time.h>
 #include <sys/time.h>
 #include <sys/times.h>
+#include <wchar.h>
+#include <stddef.h>
 
 
 /* Variables */
@@ -43,6 +45,14 @@ char **environ = __env;
 /* Functions */
 void initialise_monitor_handles()
 {
+}
+
+/**
+ * @brief Stub for swprintf to resolve newlib-nano linking error.
+ */
+int swprintf(wchar_t *s, size_t n, const wchar_t *format, ...)
+{
+  return -1;
 }
 
 int _getpid(void)

@@ -11,6 +11,7 @@
 #include "foc_types.h"
 #include "spi.h"
 #include "stm32_motor_driver.h"
+#include "BLDCMotor.h"
 #include "stm32g474xx.h"
 #include "stm32g4xx_ll_bus.h"
 #include "stm32g4xx_ll_dma.h"
@@ -68,6 +69,7 @@ constexpr auto GetAsyncSpi1Config() {
   return config;
 }
 AsyncTimerAS5048ASpi<GetAsyncSpi1Config()> async_spi1;
+BLDCMotor motor{11};
 
 void ExitSleepMode();
 
@@ -136,10 +138,16 @@ void Setup() {
   std::printf("Initializing Motor Driver...\n");
   motor1_driver.init();
 
+
   std::printf("Initializing AS5048A Sensor...\n");
   async_spi1.init();
 
-  std::printf("Starting Motor Timer and Enabling Driver...\n");
+  std::printf("Initializing Motor...\n");
+  motor.linkSensor(&async_spi1);
+  motor.linkDriver(&motor1_driver);
+
+  motor.init();
+
   std::printf("Starting Motor Timer and Enabling Driver...\n");
   LL_TIM_EnableCounter(TIM1);
   motor1_driver.enable();

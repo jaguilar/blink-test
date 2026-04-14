@@ -28,7 +28,6 @@ wint_t getwc(FILE*) { return 0; }
 #ifndef ungetwc
 wint_t ungetwc(wint_t, FILE*) { return 0; }
 #endif
-int swprintf(wchar_t*, size_t, const wchar_t*, ...) { return 0; }
 
     // GoogleTest filepath uses mkdir
     int mkdir(const char *path, mode_t mode) { return -1; }
