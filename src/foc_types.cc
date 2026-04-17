@@ -1,9 +1,10 @@
 #include "foc_types.h"
 
 #include <cstdio>
+
 #include "stm32g4xx_ll_gpio.h"
-#include "stm32g4xx_ll_tim.h"
 #include "stm32g4xx_ll_rcc.h"
+#include "stm32g4xx_ll_tim.h"
 
 namespace stfoc {
 namespace internal {
@@ -22,10 +23,12 @@ void InitGpio(const GpioEntry& entry) {
 }
 
 void GpioAssert(const GpioEntry& entry) {
+  assert(entry.gpio_base && "gpio_base not set");
   entry.gpio()->BSRR = entry.active_high ? entry.pin : (entry.pin << 16);
 }
 
 void GpioDeassert(const GpioEntry& entry) {
+  assert(entry.gpio_base && "gpio_base not set");
   entry.gpio()->BSRR = entry.active_high ? (entry.pin << 16) : entry.pin;
 }
 
@@ -59,7 +62,8 @@ void ResetAllTimers() {
     tim->AF2 = 0;
     tim->TISEL = 0;
     tim->OR = 0;
-    printf("  Reset %s: SMCR 0x%lx -> 0x%lx\n", name, (unsigned long)smcr_before, (unsigned long)tim->SMCR);
+    printf("  Reset %s: SMCR 0x%lx -> 0x%lx\n", name,
+           (unsigned long)smcr_before, (unsigned long)tim->SMCR);
   }
 }
 
