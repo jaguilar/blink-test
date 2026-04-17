@@ -2,11 +2,13 @@
 #define STFOC_AS5048A_SPI_SENSOR_H
 
 #include <cstdio>
-#include "foc_types.h"
+
+#include "cmsis_os2.h"
 #include "common/base_classes/Sensor.h"
-#include "stm32g4xx_ll_spi.h"
+#include "foc_types.h"
 #include "stm32g4xx_ll_dma.h"
 #include "stm32g4xx_ll_dmamux.h"
+#include "stm32g4xx_ll_spi.h"
 
 namespace stfoc {
 
@@ -38,7 +40,8 @@ namespace internal {
 uint32_t SyncReadSpi(const AsyncTimerSpiConfig& config, uint16_t address);
 uint32_t SpiNRxDmaReq(SPI_TypeDef* spi);
 uint32_t TimNCh4DmaReq(TIM_TypeDef* tim);
-}
+void BusyWaitNs(uint32_t ns);
+}  // namespace internal
 
 template <AsyncTimerSpiConfig config>
 class AsyncTimerAS5048ASpi : public Sensor {
@@ -63,6 +66,8 @@ class AsyncTimerAS5048ASpi : public Sensor {
 
   SPI_TypeDef* spi() const { return config.spi(); }
 
+  bool TryInit();
+
   float angle_ = 0.0f;
   uint32_t csn_assert_timer_tick_;
   alignas(uint32_t) uint16_t spi_rx_buf_[2];
@@ -81,9 +86,11 @@ void AsyncTimerAS5048ASpi<config>::init() {
       .BaudRate = config.spi_baud_rate,
       .BitOrder = LL_SPI_MSB_FIRST,
   };
+  LL_SPI_Enable(spi());
   LL_SPI_Init(spi(), &spi_init);
   LL_SPI_SetStandard(spi(), LL_SPI_PROTOCOL_MOTOROLA);
-  LL_SPI_Enable(spi());
+  LL_SPI_SetRxFIFOThreshold(config.spi(), LL_SPI_RX_FIFO_HALF_FULL);
+  LL_SPI_DisableNSSPulseMgt(config.spi());
 
   LL_DMA_InitTypeDef rx_dma_init = {
       .Direction = LL_DMA_DIRECTION_PERIPH_TO_MEMORY,
@@ -111,9 +118,10 @@ void AsyncTimerAS5048ASpi<config>::init() {
   auto spi_start_timer_tick =
       csn_assert_timer_tick_ + internal::NsToTimerTicks(250);
   constexpr int ns_per_bit = 100;
-  auto csn_deassert_timer_tick = spi_start_timer_tick +
-                                 internal::NsToTimerTicks(16 * ns_per_bit) +
-                                 internal::NsToTimerTicks(150);
+  auto csn_deassert_timer_tick =
+      spi_start_timer_tick +
+      // Temporarily double the time to allow halving the clock rate.
+      internal::NsToTimerTicks(16 * ns_per_bit) + internal::NsToTimerTicks(150);
 
   LL_TIM_InitTypeDef timer_init = {
       .Prescaler = 0,
@@ -141,38 +149,79 @@ void AsyncTimerAS5048ASpi<config>::init() {
   LL_TIM_OC_Init(config.tim(), LL_TIM_CHANNEL_CH4, &oc4_init);
   LL_TIM_SetSlaveMode(config.tim(), LL_TIM_SLAVEMODE_TRIGGER);
 
-  // Synchronous diagnostic interrogation.
-  // We read twice because the first read might have an error flag set from 
-  // a previous power state or interrupted transaction.
-  internal::SyncReadSpi(config, 0x0001);
-  uint32_t diagnostic_raw = internal::SyncReadSpi(config, 0x0001);
-  bool error = (diagnostic_raw & (1 << 14)) != 0;
-  uint8_t agc = diagnostic_raw & 0xFF;
-  bool high_field = (diagnostic_raw & (1 << 11)) != 0;
-  bool low_field = (diagnostic_raw & (1 << 10)) != 0;
-  bool cordic_overflow = (diagnostic_raw & (1 << 9)) != 0;
-  bool offset_finished = (diagnostic_raw & (1 << 8)) != 0;
-
-  std::printf("AS5048A Diagnostic (0x0001): 0x%04X\n", (unsigned int)diagnostic_raw);
-  if (error) {
-    std::printf("  [ERROR] SPI Error bit set!\n");
+  while (!TryInit()) {
   }
-  std::printf("  AGC: %d\n", agc);
-  if (high_field) {
-    std::printf("  [WARNING] Magnetic field too HIGH (Magnet too close)\n");
-  } else if (low_field) {
-    std::printf("  [WARNING] Magnetic field too LOW (Magnet too far)\n");
-  } else if (agc > 0 && agc < 255) {
-    std::printf("  Magnet positioned correctly.\n");
-  } else {
-    std::printf("  [ERROR] Sensor not responding or magnet missing (AGC=%d)\n", agc);
-  }
-  if (cordic_overflow) std::printf("  [ERROR] CORDIC Overflow\n");
-  if (!offset_finished) std::printf("  [INFO] Offset compensation not finished\n");
+}
 
+template <AsyncTimerSpiConfig config>
+bool AsyncTimerAS5048ASpi<config>::TryInit() {
+  // Wait for the sensor startup delay (10ms).
+  osDelay(10);
+
+  // 1. Clear any pending errors from power-on/previous states.
+  // Accessing 0x0001 clears the Error Flag (EF) and returns specific error
+  // types.
+  uint32_t error_reg_raw = internal::SyncReadSpi(config, 0x0001);
+  const bool parity_err = (error_reg_raw & (1 << 2)) != 0;
+  const bool command_err = (error_reg_raw & (1 << 1)) != 0;
+  const bool framing_err = (error_reg_raw & (1 << 0)) != 0;
+  std::printf("Err status: parity=%d, command=%d, framing=%d\n", parity_err,
+              command_err, framing_err);
+
+  // 2. Read the actual Diagnostic and AGC data from the correct register
+  // (0x3FFD). We read twice because SPI returns the data from the PREVIOUS
+  // command.
+  uint32_t diag_raw = internal::SyncReadSpi(config, 0x3FFD);
+
+  // Extract Global SPI Error Flag (Bit 14 of the read package)
+  bool spi_error = (diag_raw & (1 << 14)) != 0;
+
+  // Extract Diagnostic bits from the data portion (Bits 0-13)
+  uint8_t agc = diag_raw & 0xFF;                      // Bits 0-7
+  bool offset_fin = (diag_raw & (1 << 8)) != 0;       // OCF
+  bool cordic_ovf = (diag_raw & (1 << 9)) != 0;       // COF
+  bool field_too_high = (diag_raw & (1 << 11)) != 0;  // Comp High
+  bool field_too_low = (diag_raw & (1 << 10)) != 0;   // Comp Low
+
+  std::printf("AS5048A Diagnostics (Register 0x3FFD): 0x%04X\n",
+              (unsigned int)diag_raw);
+
+  if (spi_error) {
+    // If bit 14 is set, we should check the error_reg_raw (from 0x0001) for
+    // details
+    std::printf("  [ERROR] SPI/Command Error detected!\n");
+  }
+
+  std::printf("  AGC Value: %d (0=Strong, 255=Weak)\n", agc);
+
+  if (field_too_high) {
+    std::printf("  [WARNING] Magnetic field too STRONG (Magnet too close)\n");
+  }
+  if (field_too_low) {
+    std::printf("  [WARNING] Magnetic field too WEAK (Magnet too far)\n");
+  }
+  {
+    std::printf("  [OK] Magnetic field strength is optimal.\n");
+  }
+
+  if (cordic_ovf)
+    std::printf("  [ERROR] CORDIC Overflow - Angle data invalid!\n");
+  if (!offset_fin)
+    std::printf("  [INFO] Offset compensation still in progress...\n");
+
+  // 3. Read Initial Angle (0x3FFF)
+  internal::SyncReadSpi(config, 0x3FFF);
   uint32_t angle_raw = internal::SyncReadSpi(config, 0x3FFF);
-  std::printf("AS5048A Initial Angle: 0x%04X (%d raw)\n", 
-              (unsigned int)angle_raw, (int)(angle_raw & 0x3FFF));
+  // Mask to 14 bits as bits 14/15 are status/parity [cite: 83, 90]
+  uint16_t clean_angle = angle_raw & 0x3FFF;
+
+  (void)internal::SyncReadSpi(config, 0x0001);
+
+  std::printf("AS5048A Initial Angle: 0x%04X (%d raw)\n",
+              (unsigned int)angle_raw, (int)clean_angle);
+
+  return !(field_too_high || field_too_low || cordic_ovf || !offset_fin ||
+           parity_err || framing_err || command_err);
 }
 
 template <AsyncTimerSpiConfig config>
@@ -185,10 +234,10 @@ void AsyncTimerAS5048ASpi<config>::update() {
     raw_angle = spi_rx_buf_[1] & 0x3FFF;
     pending_dma_ = false;
   } else {
-    raw_angle = internal::SyncReadSpi(config, 0x3FFF);
+    raw_angle = internal::SyncReadSpi(config, 0x3FFF) & 0x3FFF;
   }
   angle_ = (static_cast<float>(raw_angle) / 16384.0f) * 2.0f *
-            static_cast<float>(M_PI);
+           static_cast<float>(M_PI);
   Sensor::update();
 }
 
@@ -209,15 +258,15 @@ void AsyncTimerAS5048ASpi<config>::AsyncReadFromMotorUpdate() {
       config.tx_dma(), config.spi_tx_dma_channel,
       reinterpret_cast<uint32_t>(AS5048ReadAngleCommandBuf()));
   LL_DMA_SetPeriphAddress(config.tx_dma(), config.spi_tx_dma_channel,
-                           (uint32_t)&config.spi()->DR);
+                          (uint32_t)&config.spi()->DR);
   LL_DMA_SetPeriphRequest(config.tx_dma(), config.spi_tx_dma_channel,
-                           internal::TimNCh4DmaReq(config.tim()));
+                          internal::TimNCh4DmaReq(config.tim()));
   LL_DMA_SetMemoryAddress(config.rx_dma(), config.spi_rx_dma_channel,
-                           reinterpret_cast<uint32_t>(spi_rx_buf_));
+                          reinterpret_cast<uint32_t>(spi_rx_buf_));
   LL_DMA_SetPeriphAddress(config.rx_dma(), config.spi_rx_dma_channel,
-                           (uint32_t)&config.spi()->DR);
+                          (uint32_t)&config.spi()->DR);
   LL_DMA_SetPeriphRequest(config.rx_dma(), config.spi_rx_dma_channel,
-                           internal::SpiNRxDmaReq(config.spi()));
+                          internal::SpiNRxDmaReq(config.spi()));
   LL_DMA_SetDataLength(config.tx_dma(), config.spi_tx_dma_channel, 2);
   LL_DMA_SetDataLength(config.rx_dma(), config.spi_rx_dma_channel, 2);
 
@@ -237,4 +286,4 @@ void AsyncTimerAS5048ASpi<config>::AsyncReadFromMotorUpdate() {
 
 }  // namespace stfoc
 
-#endif // STFOC_AS5048A_SPI_SENSOR_H
+#endif  // STFOC_AS5048A_SPI_SENSOR_H
