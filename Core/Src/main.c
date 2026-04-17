@@ -106,9 +106,9 @@ int main(void) {
   /* USER CODE BEGIN 2 */
   LL_GPIO_SetOutputPin(GPIOC, LL_GPIO_PIN_6);
   printf("\r\n--- MCU BOOT ---\r\n");
-  printf("HCLK:  %u Hz\r\n", HAL_RCC_GetHCLKFreq());
-  printf("PCLK1: %u Hz\r\n", HAL_RCC_GetPCLK1Freq());
-  printf("PCLK2: %u Hz\r\n", HAL_RCC_GetPCLK2Freq());
+  printf("HCLK:  %lu Hz\r\n", HAL_RCC_GetHCLKFreq());
+  printf("PCLK1: %lu Hz\r\n", HAL_RCC_GetPCLK1Freq());
+  printf("PCLK2: %lu Hz\r\n", HAL_RCC_GetPCLK2Freq());
   /* USER CODE END 2 */
 
   /* Init scheduler */
