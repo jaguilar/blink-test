@@ -37,22 +37,24 @@ static std::atomic<bool> tx_dma_busy{false};
 static std::atomic<size_t> tx_dma_pending_len{0};
 static size_t last_rx_pos = 0;
 
-extern "C" void UartDma_Init(void) {
+static std::atomic<bool> hardware_initialized{false};
+static std::atomic<bool> buffers_initialized{false};
+static std::atomic<bool> logs_lost_pre_init{false};
+
+extern "C" void UartDma_BufferInit(void) {
   // 1. Initialize lwrb buffers
   lwrb_init(&rx_ring_buffer, rx_ring_buffer_data, sizeof(rx_ring_buffer_data));
   lwrb_init(&tx_ring_buffer, tx_ring_buffer_data, sizeof(tx_ring_buffer_data));
+  buffers_initialized = true;
 
-  // 2. Create Event Flags
-  uart_event_flags = osEventFlagsNew(NULL);
-
-  // 3. Start RX DMA using ReceiveToIdle_DMA (supports IDLE line detection)
-  // The DMA handles are already initialized and linked in MX_USART1_UART_Init
-  // (MX_USART1_UART_MspInit)
-  HAL_UARTEx_ReceiveToIdle_DMA(&huart1, rx_dma_buffer, UART_DMA_RX_BUFFER_SIZE);
+  if (logs_lost_pre_init) {
+    const char msg[] = "\n[WARN] Logs lost before UART buffer init\n";
+    lwrb_write(&tx_ring_buffer, msg, strlen(msg));
+  }
 }
 
 static void Start_Tx_DMA(void) {
-  if (tx_dma_busy) return;
+  if (tx_dma_busy || !hardware_initialized) return;
 
   size_t len = lwrb_get_linear_block_read_length(&tx_ring_buffer);
   if (len > 0) {
@@ -67,6 +69,15 @@ static void Start_Tx_DMA(void) {
       tx_dma_pending_len = 0;
     }
   }
+}
+
+extern "C" void UartDma_Init(void) {
+  uart_event_flags = osEventFlagsNew(NULL);
+  HAL_UARTEx_ReceiveToIdle_DMA(&huart1, rx_dma_buffer, UART_DMA_RX_BUFFER_SIZE);
+
+  hardware_initialized = true;
+  // Flush any deferred logs.
+  Start_Tx_DMA();
 }
 
 static bool CanBlock(void) {
@@ -88,7 +99,7 @@ extern "C" int _write(int file, char* ptr, int len) {
       size_t written = lwrb_write(&tx_ring_buffer, ptr + total_written,
                                   (size_t)len - total_written);
       total_written += written;
-      if (!tx_dma_busy) {
+      if (hardware_initialized && !tx_dma_busy) {
         Start_Tx_DMA();
       }
       taskEXIT_CRITICAL();
@@ -102,6 +113,12 @@ extern "C" int _write(int file, char* ptr, int len) {
   } else {
     // Non-blocking context (ISR or early boot): write with "UARTFULL" warning
     // if needed
+    
+    if (!buffers_initialized) {
+        logs_lost_pre_init = true;
+        return 0;
+    }
+
     size_t free_space = lwrb_get_free(&tx_ring_buffer);
     static const char warning[] = "UARTFULL\n";
     size_t warn_len = strlen(warning);
@@ -126,7 +143,7 @@ extern "C" int _write(int file, char* ptr, int len) {
       total_written = (size_t)len;  // Pretend we wrote it all to satisfy printf
     }
 
-    if (!tx_dma_busy) {
+    if (hardware_initialized && !tx_dma_busy) {
       Start_Tx_DMA();
     }
   }
@@ -136,7 +153,7 @@ extern "C" int _write(int file, char* ptr, int len) {
 
 extern "C" int _read(int file, char* ptr, int len) {
   (void)file;
-  if (len <= 0) return 0;
+  if (len <= 0 || !buffers_initialized) return 0;
 
   bool can_block = CanBlock();
 
