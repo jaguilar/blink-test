@@ -1,10 +1,15 @@
 #ifndef STFOC_STM32_MOTOR_DRIVER_H
 #define STFOC_STM32_MOTOR_DRIVER_H
 
-#include "foc_types.h"
-#include "common/base_classes/BLDCDriver.h"
-#include "stm32g4xx_ll_tim.h"
+#include <algorithm>
+#include <cmath>
+
 #include "cmsis_os2.h"
+#include "common/base_classes/BLDCDriver.h"
+#include "common/foc_utils.h"
+#include "foc_types.h"
+#include "stm32g474xx.h"
+#include "stm32g4xx_ll_tim.h"
 
 namespace stfoc {
 
@@ -15,7 +20,6 @@ struct StTimerMotorConfig {
   GpioEntry phase3_en;
   GpioEntry drv_en;
   uint32_t pwm_freq;
-  uint32_t min_dead_time_nanos;
 
   TIM_TypeDef* timer() const {
     return reinterpret_cast<TIM_TypeDef*>(timer_base);
@@ -37,7 +41,10 @@ class StTimerMotorDriver : public BLDCDriver {
                 "Only TIM1, TIM8 and TIM20 are supported as timer bases for "
                 "StTimerMotorDriver");
 
-  StTimerMotorDriver() : BLDCDriver() {};
+  StTimerMotorDriver() : BLDCDriver() {
+    voltage_power_supply = NOT_SET;
+    voltage_limit = NOT_SET;
+  };
   ~StTimerMotorDriver() {};
 
   int init() override;
@@ -52,28 +59,28 @@ class StTimerMotorDriver : public BLDCDriver {
   }
 
   uint32_t arr_value_;
-  uint32_t max_duty_;
 };
 
 template <StTimerMotorConfig config>
 int StTimerMotorDriver<config>::init() {
   arr_value_ = config.ComputeArr();
-  max_duty_ = arr_value_ - internal::NsToTimerTicks(config.min_dead_time_nanos);
+
+  assert(voltage_power_supply != NOT_SET);
+  assert(voltage_limit != NOT_SET);
 
   internal::InitGpio(config.phase1_en);
   internal::InitGpio(config.phase2_en);
   internal::InitGpio(config.phase3_en);
   internal::InitGpio(config.drv_en);
   internal::InitTimer(config);
-  setPwm(0.5f, 0.5f, 0.5f);
-  return 0;
+  setPwm(voltage_power_supply / 2.0f, voltage_power_supply / 2.0f,
+         voltage_power_supply / 2.0f);
+  initialized = true;
+  return 1;
 }
 
 template <StTimerMotorConfig config>
 void StTimerMotorDriver<config>::enable() {
-  assert(LL_TIM_IsEnabledCounter(config.timer()));
-  assert(dc_a == 0.5f && dc_b == 0.5f && dc_c == 0.5f);
-
   internal::GpioAssert(config.drv_en);
   osDelay(1);
 
@@ -85,8 +92,6 @@ void StTimerMotorDriver<config>::enable() {
 
 template <StTimerMotorConfig config>
 void StTimerMotorDriver<config>::disable() {
-  LL_TIM_DisableCounter(timer());
-  LL_TIM_SetCounter(timer(), 0);
   LL_TIM_DisableAllOutputs(config.timer());
   internal::GpioDeassert(config.drv_en);
   for (const auto& gpio :
@@ -97,16 +102,20 @@ void StTimerMotorDriver<config>::disable() {
 
 template <StTimerMotorConfig config>
 void StTimerMotorDriver<config>::setPwm(float ua, float ub, float uc) {
-  dc_a = ua;
-  dc_b = ub;
-  dc_c = uc;
-  auto to_compare = [&](float duty) {
-    duty = std::clamp(duty, 0.0f, 1.0f);
-    return arr_value_ - static_cast<uint32_t>(std::round(max_duty_ * duty));
+  ua = std::clamp(ua, 0.0f, voltage_limit);
+  ub = std::clamp(ub, 0.0f, voltage_limit);
+  uc = std::clamp(uc, 0.0f, voltage_limit);
+
+  dc_a = ua / voltage_power_supply;
+  dc_b = ub / voltage_power_supply;
+  dc_c = uc / voltage_power_supply;
+
+  auto to_compare = [&](float duty) -> uint32_t {
+    return (1 - duty) * arr_value_;
   };
-  LL_TIM_OC_SetCompareCH1(timer(), to_compare(ua));
-  LL_TIM_OC_SetCompareCH2(timer(), to_compare(ub));
-  LL_TIM_OC_SetCompareCH3(timer(), to_compare(uc));
+  LL_TIM_OC_SetCompareCH1(timer(), to_compare(dc_a));
+  LL_TIM_OC_SetCompareCH2(timer(), to_compare(dc_b));
+  LL_TIM_OC_SetCompareCH3(timer(), to_compare(dc_c));
 }
 
 template <StTimerMotorConfig config>
