@@ -116,13 +116,14 @@ TEST_GROUP(SpiSensorTest) {
 
 TEST(SpiSensorTest, VerifyAsyncReadWithMotorUpdate) {
     printf("Starting VerifyAsyncReadWithMotorUpdate (Hardware Slave SPI3)\n");
-    
+
     static constexpr StTimerMotorConfig motor_config = {
         .timer_base = TIM1_BASE,
         .pwm_freq = 20000,
-        .min_dead_time_nanos = 1000,
     };
     StTimerMotorDriver<motor_config> motor;
+    motor.voltage_power_supply = 12.0f;
+    motor.voltage_limit = 12.0f;
     motor.init();
     
     // 2. Async SPI Config
@@ -189,7 +190,9 @@ TEST(SpiSensorTest, VerifyAsyncReadWithMotorUpdate) {
     float actual_angle = sensor.getSensorAngle();
     const uint16_t* rx_buf = sensor.getRawRxBuf();
     printf("Raw RX Buffer: 0x%04x 0x%04x\n", rx_buf[0], rx_buf[1]);
-    printf("Read Angle: %f rad (%d deg)\n", actual_angle, static_cast<int>(360.f * actual_angle / (2.f * (float)M_PI)));
+    printf("Read Angle: %d.%03d rad (%d deg)\n", (int)actual_angle,
+           (int)(std::abs(actual_angle - (int)actual_angle) * 1000),
+           static_cast<int>(360.f * actual_angle / (2.f * (float)M_PI)));
 
     LONGS_EQUAL(0x1234, rx_buf[0]);
     LONGS_EQUAL(0x5678, rx_buf[1]);

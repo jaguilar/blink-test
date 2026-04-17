@@ -62,7 +62,6 @@ TEST(AdcCurrentSenseTest, ValidateDriverTriggered) {
     static constexpr StTimerMotorConfig motor_config = {
         .timer_base = TIM1_BASE,
         .pwm_freq = 20000,
-        .min_dead_time_nanos = 1000,
     };
     StTimerMotorDriver<motor_config> motor;
     motor.init();
