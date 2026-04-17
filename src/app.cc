@@ -1,60 +1,49 @@
 #include "app.h"
 
-#include <cassert>
 #include <cmath>
 #include <cstdio>
-#include <span>
-#include <type_traits>
+#include <new>  // Required for placement new
 
+#include "BLDCMotor.h"
 #include "as5048a_spi_sensor.h"
 #include "cmsis_os2.h"
-#include "foc_types.h"
+#include "communication/SimpleFOCDebug.h"
+#include "gpio.h"
+#include "main.h"
 #include "spi.h"
 #include "stm32_motor_driver.h"
-#include "BLDCMotor.h"
 #include "stm32g474xx.h"
+#include "stm32g4xx_hal.h"
 #include "stm32g4xx_ll_bus.h"
-#include "stm32g4xx_ll_dma.h"
-#include "stm32g4xx_ll_dmamux.h"
 #include "stm32g4xx_ll_gpio.h"
+#include "stm32g4xx_ll_pwr.h"
 #include "stm32g4xx_ll_rcc.h"
-#include "stm32g4xx_ll_spi.h"
 #include "stm32g4xx_ll_tim.h"
+#include "system_stm32g4xx.h"
 #include "tim.h"
 #include "uart_dma.h"
-
-namespace blink {
-namespace {
+#include "usart.h"
 
 using namespace stfoc;
 
-volatile bool spi_dma_complete = false;
-volatile bool spi_dma_error = false;
-volatile bool is_sleeping = false;
+extern UART_HandleTypeDef huart1;
 
-constexpr uint32_t kClockFrequencyHz = 160000000;
+bool is_sleeping = false;
 
 void EnsureCycleCounterEnabled() {
   CoreDebug->DEMCR |= CoreDebug_DEMCR_TRCENA_Msk;
   DWT->CTRL |= DWT_CTRL_CYCCNTENA_Msk;
 }
 
-void CheckClockFrequency() {
-  LL_RCC_ClocksTypeDef clocks;
-  LL_RCC_GetSystemClocksFreq(&clocks);
-  assert(clocks.PCLK1_Frequency == kClockFrequencyHz);
-}
-
 constexpr auto GetMotor1Config() {
+  constexpr auto pwm_freq = 20'000;
   StTimerMotorConfig config = {
       .timer_base = TIM1_BASE,
       .drv_en = {GPIOB_BASE, LL_GPIO_PIN_0, true},
-      .pwm_freq = 20'000,
-      .min_dead_time_nanos = 1000,
+      .pwm_freq = pwm_freq,
   };
   return config;
 }
-StTimerMotorDriver<GetMotor1Config()> motor1_driver;
 
 constexpr auto GetAsyncSpi1Config() {
   AsyncTimerSpiConfig config = {
@@ -68,137 +57,168 @@ constexpr auto GetAsyncSpi1Config() {
   };
   return config;
 }
-AsyncTimerAS5048ASpi<GetAsyncSpi1Config()> async_spi1;
-BLDCMotor motor{11};
+
+typedef StTimerMotorDriver<GetMotor1Config()> MotorDriverInst;
+typedef AsyncTimerAS5048ASpi<GetAsyncSpi1Config()> SensorInst;
+
+alignas(MotorDriverInst) static uint8_t driver_buf[sizeof(MotorDriverInst)];
+alignas(SensorInst) static uint8_t sensor_buf[sizeof(SensorInst)];
+alignas(BLDCMotor) static uint8_t motor_buf[sizeof(BLDCMotor)];
+
+static MotorDriverInst* motor1_driver = nullptr;
+static SensorInst* async_spi1 = nullptr;
+static BLDCMotor* motor = nullptr;
 
 void ExitSleepMode();
 
 void EnterSleepMode() {
   std::printf("Entering sleep mode...\n");
   is_sleeping = true;
-
-  // Turn off LED
   LL_GPIO_ResetOutputPin(GPIOC, LL_GPIO_PIN_6);
-
-  // Stop motor timer and SPI trigger timer
   LL_TIM_DisableCounter(TIM1);
   LL_TIM_DisableCounter(TIM2);
-
-  // Enter sleep mode. __WFI() will wait for an interrupt (EXTI13).
-  // SysTick will wake it up, so we loop until the button is pressed (goes HIGH).
   while (LL_GPIO_IsInputPinSet(GPIOC, LL_GPIO_PIN_13) == 0) {
     HAL_PWR_EnterSLEEPMode(PWR_MAINREGULATOR_ON, PWR_SLEEPENTRY_WFI);
   }
-
   ExitSleepMode();
 }
 
 void ExitSleepMode() {
-  std::printf("Waking up!\n");
   is_sleeping = false;
-
-  // Re-enable timers
+  std::printf("Waking up...\n");
+  LL_GPIO_SetOutputPin(GPIOC, LL_GPIO_PIN_6);
   LL_TIM_EnableCounter(TIM1);
   LL_TIM_EnableCounter(TIM2);
-
-  // Restart SPI cycle
-  async_spi1.AsyncReadFromMotorUpdate<TIM1_BASE>();
 }
-
-}  // namespace
-}  // namespace blink
-
-using namespace blink;
 
 extern "C" {
 
 void Setup() {
-  LL_APB2_GRP1_EnableClock(LL_APB2_GRP1_PERIPH_TIM1);
-  LL_APB1_GRP1_EnableClock(LL_APB1_GRP1_PERIPH_TIM2);
-  LL_APB2_GRP1_EnableClock(LL_APB2_GRP1_PERIPH_SPI1);
+  // Wait a couple of seconds so if someone is trying to see early logs they
+  // have a chance to connect.
+  osDelay(2000);
+
+  // 1. Core Init
+  EnsureCycleCounterEnabled();
   LL_AHB2_GRP1_EnableClock(LL_AHB2_GRP1_PERIPH_GPIOA);
   LL_AHB2_GRP1_EnableClock(LL_AHB2_GRP1_PERIPH_GPIOB);
   LL_AHB2_GRP1_EnableClock(LL_AHB2_GRP1_PERIPH_GPIOC);
+  LL_APB2_GRP1_EnableClock(LL_APB2_GRP1_PERIPH_USART1);
 
-  LL_GPIO_InitTypeDef GPIO_InitStruct = {0};
-  GPIO_InitStruct.Pin = LL_GPIO_PIN_13;
-  GPIO_InitStruct.Mode = LL_GPIO_MODE_INPUT;
-  GPIO_InitStruct.Pull = LL_GPIO_PULL_DOWN;
-  LL_GPIO_Init(GPIOC, &GPIO_InitStruct);
+  std::printf("\r\n--- STM32 FOC Recovery Boot ---\r\n");
+  osDelay(20);
 
+  // 3. Initialize Hardware HAL/LL
+  UartDma_Init();
+  osDelay(100);  // Allow early logs to flush
   MX_SPI1_Init();
   MX_TIM1_Init();
   MX_TIM2_Init();
 
-  EnsureCycleCounterEnabled();
-  CheckClockFrequency();
-  UartDma_Init();
+  std::printf("[Setup] Core hardware initialized. DMA logging active.\n");
 
-  std::printf("\n--- Blink Test Startup ---\n");
-  std::printf("Initializing Motor Driver...\n");
-  motor1_driver.init();
+  // 4. Manual Construction
+  std::printf("[Setup] Constructing Driver...\n");
+  motor1_driver = new (driver_buf) MotorDriverInst();
+  osDelay(10);
 
+  std::printf("[Setup] Constructing Sensor...\n");
+  async_spi1 = new (sensor_buf) SensorInst();
+  osDelay(10);
 
-  std::printf("Initializing AS5048A Sensor...\n");
-  async_spi1.init();
+  std::printf("[Setup] Constructing Motor...\n");
+  motor = new (motor_buf) BLDCMotor(11, 0.040, 380);
+  osDelay(20);
 
-  std::printf("Initializing Motor...\n");
-  motor.linkSensor(&async_spi1);
-  motor.linkDriver(&motor1_driver);
+  // 5. Initializing Objects
+  std::printf("[Setup] Initializing Motor Driver...\n");
+  motor1_driver->voltage_power_supply = 16.0f;
+  motor1_driver->voltage_limit = 0.9f * motor1_driver->voltage_power_supply;
+  motor1_driver->init();
+  osDelay(10);
 
-  motor.init();
+  std::printf("[Setup] Initializing Sensor...\n");
+  async_spi1->init();
+  osDelay(10);
 
-  std::printf("Starting Motor Timer and Enabling Driver...\n");
+  std::printf("[Setup] Configuring Motor...\n");
+  motor->voltage_limit = 0.5f * motor1_driver->voltage_limit;
+  motor->current_limit = 2.0f;
+  motor->controller = MotionControlType::velocity_openloop;
+  motor->target = .1f;
+
+  std::printf("[Setup] Linking Components...\n");
+  motor->linkSensor(async_spi1);
+  std::printf("  [OK] Sensor linked.\n");
+  motor->linkDriver(motor1_driver);
+  std::printf("  [OK] Driver linked.\n");
+
+  SimpleFOCDebug::enable(&Serial);
+  motor->useMonitoring(Serial);
+  motor->monitor_downsample = 1;
+  osDelay(20);
+
+  std::printf("[Setup] Initializing Motor...\n");
+  motor->init();
+  osDelay(10);
+
+  std::printf("[Setup] Starting Hardware Timers...\n");
   LL_TIM_EnableCounter(TIM1);
-  motor1_driver.enable();
-  std::printf("Startup Complete. Entering Loop.\n");
+  osDelay(10);
 
-  // Start the first sensor measurement cycle.
-  async_spi1.AsyncReadFromMotorUpdate<TIM1_BASE>();
+  std::printf("[Setup] Initializing FOC Loop...\n");
+  motor->monitor_downsample = 1;
+  motor->monitor_port = &Serial;
+  motor->initFOC();
+  osDelay(10);
 
-  // Enable EXTI15_10 interrupt for the wake button.
-  NVIC_SetPriority(EXTI15_10_IRQn, NVIC_EncodePriority(NVIC_GetPriorityGrouping(), 0, 0));
+  std::printf("[Setup] Final Enable...\n");
+  motor->enable();
+
+  std::printf("[Setup] BOOT COMPLETE. Entering loop.\n");
+  osDelay(20);
+
+  async_spi1->AsyncReadFromMotorUpdate<TIM1_BASE>();
+
+  NVIC_SetPriority(EXTI15_10_IRQn,
+                   NVIC_EncodePriority(NVIC_GetPriorityGrouping(), 0, 0));
   NVIC_EnableIRQ(EXTI15_10_IRQn);
 }
 
 void Loop() {
-  uint32_t last_activity_tick = osKernelGetTickCount();
-  const uint32_t timeout_ms = 600000;  // 10 minutes
-
   while (true) {
-    std::printf("Pos: %ld mrad, Vel: %ld mrad/s\n",
-                static_cast<long>(async_spi1.getAngle() * 1000.0f),
-                static_cast<long>(async_spi1.getVelocity() * 1000.0f));
-
-    osDelay(1000);
-
-    if (osKernelGetTickCount() - last_activity_tick > timeout_ms) {
-      EnterSleepMode();
-      last_activity_tick = osKernelGetTickCount();
+    if (motor) {
+      motor->monitor();
     }
+    if (async_spi1) {
+      float angle = async_spi1->getAngle();
+      float velocity = async_spi1->getVelocity();
+      std::printf(
+          "Angle: %d (millrad), Velocity: %d (millrad/s) (raw: %04x) "
+          "(mech_angle millirads: %04d)\n",
+          static_cast<int>(angle * 1000), static_cast<int>(velocity * 1000),
+          async_spi1->getRawRxBuf()[1] & 0b00111111'11111111,
+          static_cast<int>(async_spi1->getMechanicalAngle() * 1000));
+    }
+    osDelay(1000);
   }
 }
 
-// The DMA completion handler for the SPI rx channel.
 void DMA1_Channel8_IRQHandler() {
   if (LL_DMA_IsActiveFlag_TC8(DMA1)) [[likely]] {
-    // Prevent further CSn assert DMAs based on this SPI transaction. Note that
-    // we'll also set OPM below to turn off the timer after this cycle, but if
-    // we miss that it's fine since there will be no CSn assert and nothing in
-    // the SPI DMAs. (We would just do a noop SPI DMA request and a noop
-    // deassert of CSn).
-    async_spi1.update();
-    LL_GPIO_SetOutputPin(GPIOC, LL_GPIO_PIN_6);
+    if (async_spi1) async_spi1->update();
     LL_DMA_ClearFlag_TC8(DMA1);
-    spi_dma_complete = true;
 
-    // Retrigger the sensor measurement cycle for the next motor update.
-    if (!is_sleeping) {
-      async_spi1.AsyncReadFromMotorUpdate<TIM1_BASE>();
+    if (motor && motor->enabled) {
+      motor->loopFOC();
+      motor->move();
+    }
+
+    if (!is_sleeping && async_spi1) {
+      async_spi1->AsyncReadFromMotorUpdate<TIM1_BASE>();
     }
   } else if (LL_DMA_IsActiveFlag_TE8(DMA1)) {
     LL_DMA_ClearFlag_TE8(DMA1);
-    spi_dma_error = true;
   }
 }
 
