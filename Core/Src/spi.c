@@ -20,6 +20,8 @@
 /* Includes ------------------------------------------------------------------*/
 #include "spi.h"
 
+#include "stm32g4xx_ll_spi.h"
+
 /* USER CODE BEGIN 0 */
 
 /* USER CODE END 0 */
@@ -97,7 +99,7 @@ void MX_SPI1_Init(void) {
   SPI_InitStruct.TransferDirection = LL_SPI_FULL_DUPLEX;
   SPI_InitStruct.Mode = LL_SPI_MODE_MASTER;
   SPI_InitStruct.DataWidth = LL_SPI_DATAWIDTH_16BIT;
-  SPI_InitStruct.ClockPolarity = LL_SPI_POLARITY_HIGH;
+  SPI_InitStruct.ClockPolarity = LL_SPI_POLARITY_LOW;
   SPI_InitStruct.ClockPhase = LL_SPI_PHASE_2EDGE;
   SPI_InitStruct.NSS = LL_SPI_NSS_SOFT;
   SPI_InitStruct.BaudRate = LL_SPI_BAUDRATEPRESCALER_DIV16;
