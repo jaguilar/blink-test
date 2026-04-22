@@ -7,3 +7,6 @@
 [submodule "lib/lwrb"]
 	path = lib/lwrb
 	url = https://github.com/MaJerle/lwrb
+[submodule "lib/Arduino-FOC-drivers"]
+	path = lib/Arduino-FOC-drivers
+	url = https://github.com/simplefoc/Arduino-FOC-drivers.git
