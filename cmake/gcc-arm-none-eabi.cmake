@@ -40,11 +40,11 @@ set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -fdata-sections -ffunction-sections -f
 set(CMAKE_C_FLAGS_DEBUG "-O0 -g3")
 set(CMAKE_CXX_FLAGS_DEBUG "-O0 -g3")
 
-set(CMAKE_C_FLAGS_RELEASE "-Os -g0")
-set(CMAKE_CXX_FLAGS_RELEASE "-Os -g0")
+set(CMAKE_C_FLAGS_RELEASE "-Os -g0 -ffast-math")
+set(CMAKE_CXX_FLAGS_RELEASE "-Os -g0 -ffast-math")
 
-set(CMAKE_C_FLAGS_RELWITHDEBINFO "-O2 -g -DNDEBUG")
-set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "-O2 -g -DNDEBUG")
+set(CMAKE_C_FLAGS_RELWITHDEBINFO "-O2 -g -DNDEBUG -ffast-math")
+set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "-O2 -g -DNDEBUG -ffast-math")
 
 option(FORCE_ASSERT "Enable assertions even in release mode." OFF)
 if (FORCE_ASSERT)
