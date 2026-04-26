@@ -148,14 +148,14 @@ int Stm32AdcCurrentSense<config>::init() {
   enable_adc(config.adc2());
 
   // Perform Offset Calibration
-  if (config.cal_pin.gpio_base != 0 &&
+  if (config.cal_pin.gpio() != nullptr &&
       config.cal_pin.pin != GpioEntry::kPinUnset) {
     internal::InitGpio(config.en_pin);
     internal::InitGpio(config.cal_pin);
 
     // If an enable pin is provided, we must assert it to power on the
     // amplifiers before we can measure their offsets.
-    if (config.en_pin.gpio_base != 0) {
+    if (config.en_pin.gpio() != nullptr) {
       internal::GpioAssert(config.en_pin);
       osDelay(2);  // Wait for DRV8304 to wake up from sleep
     }

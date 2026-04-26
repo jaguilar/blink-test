@@ -10,6 +10,7 @@
 #include <cmath>
 #include <span>
 
+#include "stm32g474xx.h"
 #include "stm32g4xx.h"
 #include "stm32g4xx_ll_gpio.h"
 #include "stm32g4xx_ll_rcc.h"
@@ -20,14 +21,23 @@ namespace stfoc {
 struct GpioEntry {
   static constexpr auto kPinUnset = 0xFFFF;
 
-  uintptr_t gpio_base = 0;
+  // We use a function pointer to return the port pointer since we can't define
+  // a constexpr referencing a macro that uses a c-style cast of an address.
+  // However, defining the struct in such a way that references a lambda
+  // does allow constexprs, and the optimizer will elide the function call when
+  // gpio() is called, effectively yielding a constant reference to the GPIO_TypeDef.
+  GPIO_TypeDef* (*get_port)() = nullptr;
   uint32_t pin = kPinUnset;
   bool active_high = true;
 
-  GPIO_TypeDef* gpio() const {
-    return reinterpret_cast<GPIO_TypeDef*>(gpio_base);
-  }
+  GPIO_TypeDef* gpio() const { return get_port(); }
 };
+
+#define GPIO_ENTRY(_port, _pin, _active_high)        \
+  GpioEntry {                                        \
+    .get_port = []() { return _port; }, .pin = _pin, \
+    .active_high = _active_high,                     \
+  }
 
 namespace internal {
 void InitGpio(const GpioEntry& entry);
