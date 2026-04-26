@@ -143,13 +143,6 @@ void Setup() {
 
   // 1. Core Init
   EnsureCycleCounterEnabled();
-  LL_AHB2_GRP1_EnableClock(LL_AHB2_GRP1_PERIPH_GPIOA);
-  LL_AHB2_GRP1_EnableClock(LL_AHB2_GRP1_PERIPH_GPIOB);
-  LL_AHB2_GRP1_EnableClock(LL_AHB2_GRP1_PERIPH_GPIOC);
-  LL_AHB1_GRP1_EnableClock(LL_AHB1_GRP1_PERIPH_CORDIC);
-  LL_APB1_GRP2_EnableClock(LL_APB1_GRP2_PERIPH_LPUART1);
-
-  // SimpleFOC_CORDIC_Config();
 
   std::printf("\r\n--- STM32 FOC Recovery Boot ---\r\n");
   osDelay(20);
@@ -161,9 +154,6 @@ void Setup() {
   // 3. Initialize Hardware HAL/LL
   UartDma_Init(&hlpuart1);
   osDelay(100);  // Allow early logs to flush
-  MX_SPI1_Init();
-  MX_TIM1_Init();
-  MX_TIM2_Init();
 
   // Configure CORDIC
   // Precision = 3 (12 iterations), Function = Sine (0), Two results (NRES=1)
