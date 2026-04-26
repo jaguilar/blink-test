@@ -25,7 +25,9 @@
 /* USER CODE END 0 */
 
 /* SPI1 init function */
-void MX_SPI1_Init(void) {
+void MX_SPI1_Init(void)
+{
+
   /* USER CODE BEGIN SPI1_Init 0 */
 
   /* USER CODE END SPI1_Init 0 */
@@ -43,29 +45,29 @@ void MX_SPI1_Init(void) {
   PA6   ------> SPI1_MISO
   PA7   ------> SPI1_MOSI
   */
-  GPIO_InitStruct.Pin = LL_GPIO_PIN_5;
+  GPIO_InitStruct.Pin = ENC_SCLK_Pin;
   GPIO_InitStruct.Mode = LL_GPIO_MODE_ALTERNATE;
   GPIO_InitStruct.Speed = LL_GPIO_SPEED_FREQ_LOW;
   GPIO_InitStruct.OutputType = LL_GPIO_OUTPUT_PUSHPULL;
   GPIO_InitStruct.Pull = LL_GPIO_PULL_NO;
   GPIO_InitStruct.Alternate = LL_GPIO_AF_5;
-  LL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+  LL_GPIO_Init(ENC_SCLK_GPIO_Port, &GPIO_InitStruct);
 
-  GPIO_InitStruct.Pin = LL_GPIO_PIN_6;
+  GPIO_InitStruct.Pin = ENC_MISO_Pin;
   GPIO_InitStruct.Mode = LL_GPIO_MODE_ALTERNATE;
   GPIO_InitStruct.Speed = LL_GPIO_SPEED_FREQ_LOW;
   GPIO_InitStruct.OutputType = LL_GPIO_OUTPUT_PUSHPULL;
   GPIO_InitStruct.Pull = LL_GPIO_PULL_NO;
   GPIO_InitStruct.Alternate = LL_GPIO_AF_5;
-  LL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+  LL_GPIO_Init(ENC_MISO_GPIO_Port, &GPIO_InitStruct);
 
-  GPIO_InitStruct.Pin = LL_GPIO_PIN_7;
+  GPIO_InitStruct.Pin = ENC_MOSI_Pin;
   GPIO_InitStruct.Mode = LL_GPIO_MODE_ALTERNATE;
   GPIO_InitStruct.Speed = LL_GPIO_SPEED_FREQ_LOW;
   GPIO_InitStruct.OutputType = LL_GPIO_OUTPUT_PUSHPULL;
   GPIO_InitStruct.Pull = LL_GPIO_PULL_NO;
   GPIO_InitStruct.Alternate = LL_GPIO_AF_5;
-  LL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+  LL_GPIO_Init(ENC_MOSI_GPIO_Port, &GPIO_InitStruct);
 
   /* SPI1 DMA Init */
 
@@ -87,8 +89,7 @@ void MX_SPI1_Init(void) {
   LL_DMA_SetMemorySize(DMA1, LL_DMA_CHANNEL_8, LL_DMA_MDATAALIGN_HALFWORD);
 
   /* SPI1 interrupt Init */
-  NVIC_SetPriority(SPI1_IRQn,
-                   NVIC_EncodePriority(NVIC_GetPriorityGrouping(), 5, 0));
+  NVIC_SetPriority(SPI1_IRQn, NVIC_EncodePriority(NVIC_GetPriorityGrouping(),5, 0));
   NVIC_EnableIRQ(SPI1_IRQn);
 
   /* USER CODE BEGIN SPI1_Init 1 */
@@ -110,8 +111,10 @@ void MX_SPI1_Init(void) {
   /* USER CODE BEGIN SPI1_Init 2 */
 
   /* USER CODE END SPI1_Init 2 */
+
 }
 
 /* USER CODE BEGIN 1 */
 
 /* USER CODE END 1 */
+

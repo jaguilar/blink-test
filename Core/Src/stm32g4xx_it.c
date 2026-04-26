@@ -88,9 +88,9 @@ static void UART_SendStringPolling(const char* s) {
 /* USER CODE END 0 */
 
 /* External variables --------------------------------------------------------*/
-extern DMA_HandleTypeDef hdma_usart1_rx;
-extern DMA_HandleTypeDef hdma_usart1_tx;
-extern UART_HandleTypeDef huart1;
+extern DMA_HandleTypeDef hdma_lpuart1_rx;
+extern DMA_HandleTypeDef hdma_lpuart1_tx;
+extern UART_HandleTypeDef hlpuart1;
 extern TIM_HandleTypeDef htim17;
 
 /* USER CODE BEGIN EV */
@@ -164,7 +164,8 @@ void NMI_Handler(void)
 /**
   * @brief This function handles Hard fault interrupt.
   */
-void HardFault_Handler(void) {
+void HardFault_Handler(void)
+{
   /* USER CODE BEGIN HardFault_IRQn 0 */
   __asm volatile(
       "tst lr, #4\n"
@@ -174,7 +175,8 @@ void HardFault_Handler(void) {
       "mov r1, lr\n"
       "b HardFault_Handler_C\n");
   /* USER CODE END HardFault_IRQn 0 */
-  while (1) {
+  while (1)
+  {
     /* USER CODE BEGIN W1_HardFault_IRQn 0 */
     /* USER CODE END W1_HardFault_IRQn 0 */
   }
@@ -213,11 +215,13 @@ void BusFault_Handler(void)
 /**
   * @brief This function handles Undefined instruction or illegal state.
   */
-void UsageFault_Handler(void) {
+void UsageFault_Handler(void)
+{
   /* USER CODE BEGIN UsageFault_IRQn 0 */
   UART_SendStringPolling("UsageFault!\r\n");
   /* USER CODE END UsageFault_IRQn 0 */
-  while (1) {
+  while (1)
+  {
     /* USER CODE BEGIN W1_UsageFault_IRQn 0 */
     /* USER CODE END W1_UsageFault_IRQn 0 */
   }
@@ -261,43 +265,45 @@ void TIM1_TRG_COM_TIM17_IRQHandler(void)
 }
 
 /**
- * @brief This function handles USART1 global interrupt / USART1 wake-up
- * interrupt through EXTI line 25.
- */
-void USART1_IRQHandler(void) {
-  /* USER CODE BEGIN USART1_IRQn 0 */
-
-  /* USER CODE END USART1_IRQn 0 */
-  HAL_UART_IRQHandler(&huart1);
-  /* USER CODE BEGIN USART1_IRQn 1 */
-
-  /* USER CODE END USART1_IRQn 1 */
-}
-
-/**
- * @brief This function handles DMA2 channel1 global interrupt.
- */
-void DMA2_Channel1_IRQHandler(void) {
+  * @brief This function handles DMA2 channel1 global interrupt.
+  */
+void DMA2_Channel1_IRQHandler(void)
+{
   /* USER CODE BEGIN DMA2_Channel1_IRQn 0 */
 
   /* USER CODE END DMA2_Channel1_IRQn 0 */
-  HAL_DMA_IRQHandler(&hdma_usart1_rx);
+  HAL_DMA_IRQHandler(&hdma_lpuart1_rx);
   /* USER CODE BEGIN DMA2_Channel1_IRQn 1 */
 
   /* USER CODE END DMA2_Channel1_IRQn 1 */
 }
 
 /**
- * @brief This function handles DMA2 channel2 global interrupt.
- */
-void DMA2_Channel2_IRQHandler(void) {
+  * @brief This function handles DMA2 channel2 global interrupt.
+  */
+void DMA2_Channel2_IRQHandler(void)
+{
   /* USER CODE BEGIN DMA2_Channel2_IRQn 0 */
 
   /* USER CODE END DMA2_Channel2_IRQn 0 */
-  HAL_DMA_IRQHandler(&hdma_usart1_tx);
+  HAL_DMA_IRQHandler(&hdma_lpuart1_tx);
   /* USER CODE BEGIN DMA2_Channel2_IRQn 1 */
 
   /* USER CODE END DMA2_Channel2_IRQn 1 */
+}
+
+/**
+  * @brief This function handles LPUART1 global interrupt.
+  */
+void LPUART1_IRQHandler(void)
+{
+  /* USER CODE BEGIN LPUART1_IRQn 0 */
+
+  /* USER CODE END LPUART1_IRQn 0 */
+  HAL_UART_IRQHandler(&hlpuart1);
+  /* USER CODE BEGIN LPUART1_IRQn 1 */
+
+  /* USER CODE END LPUART1_IRQn 1 */
 }
 
 /* USER CODE BEGIN 1 */

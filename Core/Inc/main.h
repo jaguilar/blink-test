@@ -42,7 +42,6 @@ extern "C" {
 #include "stm32g4xx_ll_spi.h"
 #include "stm32g4xx_ll_tim.h"
 #include "stm32g4xx_ll_gpio.h"
-#include "stm32g4xx_ll_usart.h"
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
@@ -73,6 +72,32 @@ void Error_Handler(void);
 
 /* Private defines -----------------------------------------------------------*/
 #define TIMER_PERIOD 5666
+#define M1_PHASEA_SENSE_Pin LL_GPIO_PIN_0
+#define M1_PHASEA_SENSE_GPIO_Port GPIOA
+#define M1_PHASEB_SENSE_Pin LL_GPIO_PIN_1
+#define M1_PHASEB_SENSE_GPIO_Port GPIOA
+#define ENC_SCLK_Pin LL_GPIO_PIN_5
+#define ENC_SCLK_GPIO_Port GPIOA
+#define ENC_MISO_Pin LL_GPIO_PIN_6
+#define ENC_MISO_GPIO_Port GPIOA
+#define ENC_MOSI_Pin LL_GPIO_PIN_7
+#define ENC_MOSI_GPIO_Port GPIOA
+#define M1_EN_Pin LL_GPIO_PIN_0
+#define M1_EN_GPIO_Port GPIOB
+#define M1_CAL_Pin LL_GPIO_PIN_1
+#define M1_CAL_GPIO_Port GPIOB
+#define ENC_CSN_Pin LL_GPIO_PIN_15
+#define ENC_CSN_GPIO_Port GPIOB
+#define M1_CAL_GPIO_Pin LL_GPIO_PIN_6
+#define M1_CAL_GPIO_GPIO_Port GPIOC
+#define M1_PHASEA_OUT_Pin LL_GPIO_PIN_8
+#define M1_PHASEA_OUT_GPIO_Port GPIOA
+#define M1_PHASEB_OUT_Pin LL_GPIO_PIN_9
+#define M1_PHASEB_OUT_GPIO_Port GPIOA
+#define M1_PHASEC_OUT_Pin LL_GPIO_PIN_10
+#define M1_PHASEC_OUT_GPIO_Port GPIOA
+#define M1_BRAKE2_Pin LL_GPIO_PIN_11
+#define M1_BRAKE2_GPIO_Port GPIOA
 
 /* USER CODE BEGIN Private defines */
 

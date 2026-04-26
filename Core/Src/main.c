@@ -22,9 +22,9 @@
 #include "adc.h"
 #include "cordic.h"
 #include "dma.h"
+#include "usart.h"
 #include "spi.h"
 #include "tim.h"
-#include "usart.h"
 #include "gpio.h"
 
 /* Private includes ----------------------------------------------------------*/
@@ -66,7 +66,7 @@ void MX_FREERTOS_Init(void);
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
 int __io_putchar(int ch) {
-  HAL_UART_Transmit(&huart1, (uint8_t*)&ch, 1, HAL_MAX_DELAY);
+  HAL_UART_Transmit(&hlpuart1, (uint8_t*)&ch, 1, HAL_MAX_DELAY);
   return ch;
 }
 /* USER CODE END 0 */
@@ -111,14 +111,11 @@ int main(void)
   MX_ADC2_Init();
   MX_SPI1_Init();
   MX_TIM2_Init();
-  MX_USART1_UART_Init();
   MX_CORDIC_Init();
+  MX_TIM15_Init();
+  MX_LPUART1_UART_Init();
   /* USER CODE BEGIN 2 */
-  LL_GPIO_SetOutputPin(GPIOC, LL_GPIO_PIN_6);
   printf("\r\n--- MCU BOOT ---\r\n");
-  printf("HCLK:  %lu Hz\r\n", HAL_RCC_GetHCLKFreq());
-  printf("PCLK1: %lu Hz\r\n", HAL_RCC_GetPCLK1Freq());
-  printf("PCLK2: %lu Hz\r\n", HAL_RCC_GetPCLK2Freq());
   /* USER CODE END 2 */
 
   /* Init scheduler */
