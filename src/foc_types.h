@@ -30,7 +30,7 @@ struct GpioEntry {
   uint32_t pin = kPinUnset;
   bool active_high = true;
 
-  GPIO_TypeDef* gpio() const { return get_port(); }
+  GPIO_TypeDef* gpio() const { return get_port ? get_port() : nullptr; }
 };
 
 #define GPIO_ENTRY(_port, _pin, _active_high)        \

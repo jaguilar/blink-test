@@ -10,7 +10,7 @@ namespace stfoc {
 namespace internal {
 
 void InitGpio(const GpioEntry& entry) {
-  if (!entry.gpio() || entry.pin == GpioEntry::kPinUnset) return;
+  if (entry.gpio() == nullptr || entry.pin == GpioEntry::kPinUnset) return;
   auto gpio = entry.gpio();
   auto pin = entry.pin;
   if (entry.active_high) {
@@ -21,12 +21,12 @@ void InitGpio(const GpioEntry& entry) {
 }
 
 void GpioAssert(const GpioEntry& entry) {
-  if (!entry.gpio() || entry.pin == GpioEntry::kPinUnset) return;
+  if (entry.gpio() == nullptr || entry.pin == GpioEntry::kPinUnset) return;
   entry.gpio()->BSRR = entry.active_high ? entry.pin : (entry.pin << 16);
 }
 
 void GpioDeassert(const GpioEntry& entry) {
-  if (!entry.gpio() || entry.pin == GpioEntry::kPinUnset) return;
+  if (entry.gpio() == nullptr || entry.pin == GpioEntry::kPinUnset) return;
   entry.gpio()->BSRR = entry.active_high ? (entry.pin << 16) : entry.pin;
 }
 
