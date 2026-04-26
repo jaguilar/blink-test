@@ -3,21 +3,25 @@
 
 #include <stdint.h>
 #include <sys/types.h>
+
+#include <algorithm>
 #include <bit>
 #include <cassert>
-#include <span>
 #include <cmath>
-#include <algorithm>
+#include <span>
 
 #include "stm32g4xx.h"
-#include "stm32g4xx_ll_tim.h"
+#include "stm32g4xx_ll_gpio.h"
 #include "stm32g4xx_ll_rcc.h"
+#include "stm32g4xx_ll_tim.h"
 
 namespace stfoc {
 
 struct GpioEntry {
+  static constexpr auto kPinUnset = 0xFFFF;
+
   uintptr_t gpio_base = 0;
-  uint32_t pin = 0;
+  uint32_t pin = kPinUnset;
   bool active_high = true;
 
   GPIO_TypeDef* gpio() const {
@@ -29,7 +33,11 @@ namespace internal {
 void InitGpio(const GpioEntry& entry);
 void GpioAssert(const GpioEntry& entry);
 void GpioDeassert(const GpioEntry& entry);
+
+// Sets the given alternate function on the given GPIO.
+void SetGpioAF(const GpioEntry& entry, uint32_t af);
 void ResetAllTimers();
+void EnableTimerClock(uintptr_t timer_base);
 
 inline uint32_t NsToTimerTicks(uint32_t ns) {
 #ifndef NDEBUG

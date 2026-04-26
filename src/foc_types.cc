@@ -2,7 +2,7 @@
 
 #include <cstdio>
 
-#include "stm32g4xx_ll_gpio.h"
+#include "stm32g4xx_ll_bus.h"
 #include "stm32g4xx_ll_rcc.h"
 #include "stm32g4xx_ll_tim.h"
 
@@ -10,7 +10,7 @@ namespace stfoc {
 namespace internal {
 
 void InitGpio(const GpioEntry& entry) {
-  if (!entry.gpio_base || !entry.pin) return;
+  if (!entry.gpio_base || entry.pin == GpioEntry::kPinUnset) return;
   auto gpio = entry.gpio();
   auto pin = entry.pin;
   if (entry.active_high) {
@@ -23,13 +23,22 @@ void InitGpio(const GpioEntry& entry) {
 }
 
 void GpioAssert(const GpioEntry& entry) {
-  assert(entry.gpio_base && "gpio_base not set");
+  if (!entry.gpio_base || entry.pin == GpioEntry::kPinUnset) return;
   entry.gpio()->BSRR = entry.active_high ? entry.pin : (entry.pin << 16);
 }
 
 void GpioDeassert(const GpioEntry& entry) {
-  assert(entry.gpio_base && "gpio_base not set");
+  if (!entry.gpio_base || entry.pin == GpioEntry::kPinUnset) return;
   entry.gpio()->BSRR = entry.active_high ? (entry.pin << 16) : entry.pin;
+}
+
+void SetGpioAF(const GpioEntry& entry, uint32_t af) {
+  if (!entry.gpio_base || entry.pin == GpioEntry::kPinUnset) return;
+  if (entry.pin < LL_GPIO_PIN_8) {
+    LL_GPIO_SetAFPin_0_7(entry.gpio(), entry.pin, af);
+  } else {
+    LL_GPIO_SetAFPin_8_15(entry.gpio(), entry.pin, af);
+  }
 }
 
 void ResetAllTimers() {
@@ -64,6 +73,38 @@ void ResetAllTimers() {
     tim->OR = 0;
     printf("  Reset %s: SMCR 0x%lx -> 0x%lx\n", name,
            (unsigned long)smcr_before, (unsigned long)tim->SMCR);
+  }
+}
+
+void EnableTimerClock(uintptr_t timer_base) {
+  switch (timer_base) {
+    case TIM1_BASE:
+    case TIM8_BASE:
+    case TIM15_BASE:
+    case TIM16_BASE:
+    case TIM17_BASE:
+    case TIM20_BASE:
+      LL_APB2_GRP1_EnableClock(
+          timer_base == TIM1_BASE    ? LL_APB2_GRP1_PERIPH_TIM1
+          : timer_base == TIM8_BASE  ? LL_APB2_GRP1_PERIPH_TIM8
+          : timer_base == TIM15_BASE ? LL_APB2_GRP1_PERIPH_TIM15
+          : timer_base == TIM16_BASE ? LL_APB2_GRP1_PERIPH_TIM16
+          : timer_base == TIM17_BASE ? LL_APB2_GRP1_PERIPH_TIM17
+                                     : LL_APB2_GRP1_PERIPH_TIM20);
+      break;
+    case TIM2_BASE:
+    case TIM3_BASE:
+    case TIM4_BASE:
+    case TIM5_BASE:
+      LL_APB1_GRP1_EnableClock(
+          timer_base == TIM2_BASE   ? LL_APB1_GRP1_PERIPH_TIM2
+          : timer_base == TIM3_BASE ? LL_APB1_GRP1_PERIPH_TIM3
+          : timer_base == TIM4_BASE ? LL_APB1_GRP1_PERIPH_TIM4
+                                    : LL_APB1_GRP1_PERIPH_TIM5);
+      break;
+    default:
+      assert(false && "Unsupported timer base for clock enablement");
+      break;
   }
 }
 
