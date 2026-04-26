@@ -60,11 +60,23 @@
 void SystemClock_Config(void);
 void MX_FREERTOS_Init(void);
 /* USER CODE BEGIN PFP */
-
+void CopyCCMRAM(void);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+extern uint32_t _siccmsram;
+extern uint32_t _sccmsram;
+extern uint32_t _eccmsram;
+
+void CopyCCMRAM(void) {
+  uint32_t *pSrc = &_siccmsram;
+  uint32_t *pDest = &_sccmsram;
+  while (pDest < &_eccmsram) {
+    *pDest++ = *pSrc++;
+  }
+}
+
 int __io_putchar(int ch) {
   HAL_UART_Transmit(&hlpuart1, (uint8_t*)&ch, 1, HAL_MAX_DELAY);
   return ch;
@@ -79,6 +91,7 @@ int main(void)
 {
 
   /* USER CODE BEGIN 1 */
+  CopyCCMRAM();
   UartDma_BufferInit();
   LL_AHB2_GRP1_EnableClock(LL_AHB2_GRP1_PERIPH_GPIOC);
 

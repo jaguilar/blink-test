@@ -347,7 +347,7 @@ void Loop() {
   }
 }
 
-void DMA1_Channel8_IRQHandler() {
+void __attribute__((section(".ccmsram"))) DMA1_Channel8_IRQHandler() {
   if (LL_DMA_IsActiveFlag_TC8(DMA1)) [[likely]] {
     auto int_token = int_perf.GetToken();
     LL_DMA_ClearFlag_TC8(DMA1);

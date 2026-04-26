@@ -55,12 +55,14 @@ ENTRY(Reset_Handler)
 /* Specify the memory areas */
 MEMORY
 {
-RAM (xrw)      : ORIGIN = 0x20000000, LENGTH = 128K
+RAM (xrw)      : ORIGIN = 0x20000000, LENGTH = 80K
 FLASH (rx)      : ORIGIN = 0x8000000, LENGTH = 512K
+CCMSRAM (xrw)   : ORIGIN = 0x10000000, LENGTH = 32K
+SRAM3 (xrw)     : ORIGIN = 0x2001C000, LENGTH = 16K
 }
 
 /* Highest address of the user mode stack */
-_estack = ORIGIN(RAM) + LENGTH(RAM);    /* end of RAM */
+_estack = ORIGIN(SRAM3) + LENGTH(SRAM3);    /* end of SRAM3 */
 _sstack = _estack - _Min_Stack_Size;
 /* Generate a link error if heap and stack don't fit into RAM */
 _Min_Heap_Size = 0x200;      /* required amount of heap  */
@@ -76,6 +78,31 @@ SECTIONS
     KEEP(*(.isr_vector)) /* Startup code */
     . = ALIGN(4);
   } >FLASH
+
+  /* CCM-SRAM section
+  *
+  * IMPORTANT NOTE!
+  * If initialized variables will be placed in this section,
+  * the startup code needs to be modified to copy the init-values.
+  */
+  .ccmsram :
+  {
+    . = ALIGN(4);
+    _sccmsram = .;       /* create a global symbol at ccmsram start */
+    *FOCMotor.cpp.obj(.text .text*)
+    *BLDCMotor.cpp.obj(.text .text*)
+    *foc_utils.cpp.obj(.text .text*)
+    *pid.cpp.obj(.text .text*)
+    *lowpass_filter.cpp.obj(.text .text*)
+    *as5048a_spi_sensor.cc.obj(.text .text*)
+    *stm32_adc_current_sense.cc.obj(.text .text*)
+    *stm32_motor_driver.cc.obj(.text .text*)
+    *STM32G4CORDICTrigFunctions.cpp.obj(.text .text*)
+    *(.ccmsram)
+    *(.ccmsram*)
+    . = ALIGN(4);
+    _eccmsram = .;       /* create a global symbol at ccmsram end */
+  } >CCMSRAM AT> FLASH
 
   /* The program code and other data goes into FLASH */
   .text :
@@ -235,9 +262,8 @@ SECTIONS
     . = . + _Min_Heap_Size;
     . = . + _Min_Stack_Size;
     . = ALIGN(8);
-  } >RAM
+  } >SRAM3
 
-
-
+  _siccmsram = LOADADDR(.ccmsram);
 
 }
