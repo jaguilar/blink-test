@@ -5,6 +5,7 @@ import time
 import sys
 import os
 import subprocess
+import argparse
 
 def reset_target():
     print("Resetting target via OpenOCD...")
@@ -21,11 +22,19 @@ def reset_target():
         print(f"Warning: Failed to reset target: {e}")
 
 def main():
+    parser = argparse.ArgumentParser(description='Monitor STM32 UART output.')
+    parser.add_argument('--port', '-p', default='/dev/ttyACM0',
+                        help='Serial port to monitor (default: /dev/ttyACM0)')
+    parser.add_argument('--baud', '-b', type=int, default=5000000,
+                        help='Baud rate (default: 5000000)')
+    
+    args = parser.parse_args()
+
     try:
         reset_target()
 
-        port = os.getenv('UART_PORT', '/dev/ttyUSB0')
-        baud = int(os.getenv('UART_BAUD', '115200'))
+        port = args.port
+        baud = args.baud
         
         # Give OpenOCD a moment to release the ST-Link
         time.sleep(0.5)

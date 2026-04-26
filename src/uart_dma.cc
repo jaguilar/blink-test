@@ -30,9 +30,7 @@ static osEventFlagsId_t uart_event_flags;
 #define UART_EVENT_RX_DATA 0x01
 #define UART_EVENT_TX_COMPLETE 0x02
 
-extern DMA_HandleTypeDef hdma_usart1_rx;
-extern DMA_HandleTypeDef hdma_usart1_tx;
-
+static UART_HandleTypeDef* active_huart = nullptr;
 static std::atomic<bool> tx_dma_busy{false};
 static std::atomic<size_t> tx_dma_pending_len{0};
 static size_t last_rx_pos = 0;
@@ -62,7 +60,7 @@ static void Start_Tx_DMA(void) {
     tx_dma_pending_len = len;
     void* data = lwrb_get_linear_block_read_address(&tx_ring_buffer);
 
-    if (HAL_UART_Transmit_DMA(&huart1, (uint8_t*)data, (uint16_t)len) !=
+    if (HAL_UART_Transmit_DMA(active_huart, (uint8_t*)data, (uint16_t)len) !=
         HAL_OK) {
       // If we failed to start, reset busy flag so we can try again
       tx_dma_busy = false;
@@ -71,9 +69,11 @@ static void Start_Tx_DMA(void) {
   }
 }
 
-extern "C" void UartDma_Init(void) {
+extern "C" void UartDma_Init(UART_HandleTypeDef* huart) {
+  active_huart = huart;
   uart_event_flags = osEventFlagsNew(NULL);
-  HAL_UARTEx_ReceiveToIdle_DMA(&huart1, rx_dma_buffer, UART_DMA_RX_BUFFER_SIZE);
+  HAL_UARTEx_ReceiveToIdle_DMA(active_huart, rx_dma_buffer,
+                               UART_DMA_RX_BUFFER_SIZE);
 
   hardware_initialized = true;
   // Flush any deferred logs.
@@ -176,7 +176,7 @@ extern "C" int _read(int file, char* ptr, int len) {
 // HAL Callbacks
 extern "C" void HAL_UARTEx_RxEventCallback(UART_HandleTypeDef* huart,
                                            uint16_t Size) {
-  if (huart->Instance == USART1) {
+  if (huart == active_huart) {
     size_t current_pos = Size;
     size_t new_data_len = 0;
 
@@ -208,7 +208,7 @@ extern "C" void HAL_UART_RxCpltCallback(UART_HandleTypeDef* huart) {
 }
 
 extern "C" void HAL_UART_TxCpltCallback(UART_HandleTypeDef* huart) {
-  if (huart->Instance == USART1) {
+  if (huart == active_huart) {
     // Mark previous linear block as read
 
     // HAL_UART_Transmit_DMA only finishes one linear block.
@@ -224,7 +224,7 @@ extern "C" void HAL_UART_TxCpltCallback(UART_HandleTypeDef* huart) {
 }
 
 extern "C" void HAL_UART_ErrorCallback(UART_HandleTypeDef* huart) {
-  if (huart->Instance == USART1) {
+  if (huart == active_huart) {
     // Reset DMA and UART if error occurs
     HAL_UART_DMAStop(huart);
     last_rx_pos = 0;
