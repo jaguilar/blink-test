@@ -37,8 +37,21 @@ void MX_TIM1_Init(void)
   LL_TIM_BDTR_InitTypeDef TIM_BDTRInitStruct = {0};
 
   LL_GPIO_InitTypeDef GPIO_InitStruct = {0};
+
   /* Peripheral clock enable */
   LL_APB2_GRP1_EnableClock(LL_APB2_GRP1_PERIPH_TIM1);
+
+  LL_AHB2_GRP1_EnableClock(LL_AHB2_GRP1_PERIPH_GPIOA);
+  /**TIM1 GPIO Configuration
+  PA11   ------> TIM1_BKIN2
+  */
+  GPIO_InitStruct.Pin = LL_GPIO_PIN_11;
+  GPIO_InitStruct.Mode = LL_GPIO_MODE_ALTERNATE;
+  GPIO_InitStruct.Speed = LL_GPIO_SPEED_FREQ_LOW;
+  GPIO_InitStruct.OutputType = LL_GPIO_OUTPUT_OPENDRAIN;
+  GPIO_InitStruct.Pull = LL_GPIO_PULL_NO;
+  GPIO_InitStruct.Alternate = LL_GPIO_AF_12;
+  LL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
   /* TIM1 interrupt Init */
   NVIC_SetPriority(TIM1_TRG_COM_TIM17_IRQn, NVIC_EncodePriority(NVIC_GetPriorityGrouping(),5, 0));
@@ -238,4 +251,3 @@ void MX_TIM2_Init(void)
 /* USER CODE BEGIN 1 */
 
 /* USER CODE END 1 */
-

@@ -22,8 +22,11 @@
 #include "stm32g4xx_it.h"
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-#include "app.h"
 #include <stdio.h>
+
+#include "app.h"
+#include "stm32g4xx_ll_usart.h"
+
 
 /* USER CODE END Includes */
 
@@ -55,14 +58,6 @@
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
 
-/* USER CODE END 0 */
-
-/* External variables --------------------------------------------------------*/
-extern DMA_HandleTypeDef hdma_usart1_rx;
-extern DMA_HandleTypeDef hdma_usart1_tx;
-extern UART_HandleTypeDef huart1;
-extern TIM_HandleTypeDef htim17;
-
 static void UART_SendStringPolling(const char* s) {
   // Ensure GPIOC and USART1 clocks are enabled
   LL_AHB2_GRP1_EnableClock(LL_AHB2_GRP1_PERIPH_GPIOC);
@@ -89,6 +84,14 @@ static void UART_SendStringPolling(const char* s) {
   }
   while (!LL_USART_IsActiveFlag_TC(USART1));
 }
+
+/* USER CODE END 0 */
+
+/* External variables --------------------------------------------------------*/
+extern DMA_HandleTypeDef hdma_usart1_rx;
+extern DMA_HandleTypeDef hdma_usart1_tx;
+extern UART_HandleTypeDef huart1;
+extern TIM_HandleTypeDef htim17;
 
 /* USER CODE BEGIN EV */
 __attribute__((used)) void UsageFault_Handler_C(uint32_t *stacked_regs)

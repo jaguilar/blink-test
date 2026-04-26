@@ -20,8 +20,6 @@
 /* Includes ------------------------------------------------------------------*/
 #include "spi.h"
 
-#include "stm32g4xx_ll_spi.h"
-
 /* USER CODE BEGIN 0 */
 
 /* USER CODE END 0 */
