@@ -42,7 +42,7 @@ uint32_t SyncReadSpi(const AsyncTimerSpiConfig& config, uint16_t address) {
   auto csn_set_asserted = [&](bool active) {
     LL_TIM_OC_SetMode(
         config.tim(), config.timer_channel_csn,
-        active ? LL_TIM_OCMODE_FORCED_ACTIVE : LL_TIM_OCMODE_PWM2);
+        active ? LL_TIM_OCMODE_FORCED_ACTIVE : LL_TIM_OCMODE_FORCED_INACTIVE);
     LL_TIM_GenerateEvent_UPDATE(config.tim());
   };
 
@@ -79,22 +79,26 @@ uint32_t SpiNRxDmaReq(SPI_TypeDef* spi) {
   return 0;
 }
 
-uint32_t TimNCh4DmaReq(TIM_TypeDef* tim) {
-  if (tim == TIM1) return LL_DMAMUX_REQ_TIM1_CH4;
-  if (tim == TIM2) return LL_DMAMUX_REQ_TIM2_CH4;
-  if (tim == TIM3) return LL_DMAMUX_REQ_TIM3_CH4;
-  if (tim == TIM4) return LL_DMAMUX_REQ_TIM4_CH4;
-  if (tim == TIM5) return LL_DMAMUX_REQ_TIM5_CH4;
-  if (tim == TIM8) return LL_DMAMUX_REQ_TIM8_CH4;
-  if (tim == TIM20) return LL_DMAMUX_REQ_TIM20_CH4;
-  assert(false && "Unsupported timer instance");
+uint32_t TimNChDmaReq(TIM_TypeDef* tim, uint32_t channel) {
+  if (channel == LL_TIM_CHANNEL_CH4) {
+    if (tim == TIM1) return LL_DMAMUX_REQ_TIM1_CH4;
+    if (tim == TIM2) return LL_DMAMUX_REQ_TIM2_CH4;
+    if (tim == TIM3) return LL_DMAMUX_REQ_TIM3_CH4;
+    if (tim == TIM4) return LL_DMAMUX_REQ_TIM4_CH4;
+    if (tim == TIM5) return LL_DMAMUX_REQ_TIM5_CH4;
+    if (tim == TIM8) return LL_DMAMUX_REQ_TIM8_CH4;
+    if (tim == TIM20) return LL_DMAMUX_REQ_TIM20_CH4;
+  } else if (channel == LL_TIM_CHANNEL_CH1) {
+    if (tim == TIM15) return LL_DMAMUX_REQ_TIM15_CH1;
+  }
+  assert(false && "Unsupported timer instance or channel");
   return 0;
 }
 
 }  // namespace internal
 
 const uint16_t* AS5048ReadAngleCommandBuf() {
-  alignas(uint16_t) static const uint16_t buf[] = {0xFFFF, 0x0001 | (1 << 15)};
+  alignas(uint16_t) static const uint16_t buf[] = {0xFFFF, 0x0000};
   return buf;
 }
 
