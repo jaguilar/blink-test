@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdio>
 
 #include "cmsis_os2.h"
 #include "common/base_classes/BLDCDriver.h"
@@ -53,12 +54,19 @@ class StTimerMotorDriver : public BLDCDriver {
   void setPwm(float Ua, float Ub, float Uc) override;
   void setPhaseState(PhaseState sa, PhaseState sb, PhaseState sc) override;
 
+  void SetVoltagePowerSupply(float v) {
+    voltage_power_supply = v;
+    inv_voltage_power_supply = 1.0f / v;
+  }
+
  private:
   TIM_TypeDef* timer() const {
     return reinterpret_cast<TIM_TypeDef*>(config.timer_base);
   }
 
-  uint32_t arr_value_;
+  float inv_voltage_power_supply;
+
+  float arr_value_;
 };
 
 template <StTimerMotorConfig config>
@@ -67,6 +75,8 @@ int StTimerMotorDriver<config>::init() {
 
   assert(voltage_power_supply != NOT_SET);
   assert(voltage_limit != NOT_SET);
+
+  SetVoltagePowerSupply(voltage_power_supply);
 
   internal::InitGpio(config.phase1_en);
   internal::InitGpio(config.phase2_en);
@@ -106,16 +116,12 @@ void StTimerMotorDriver<config>::setPwm(float ua, float ub, float uc) {
   ub = std::clamp(ub, 0.0f, voltage_limit);
   uc = std::clamp(uc, 0.0f, voltage_limit);
 
-  dc_a = ua / voltage_power_supply;
-  dc_b = ub / voltage_power_supply;
-  dc_c = uc / voltage_power_supply;
-
   auto to_compare = [&](float duty) -> uint32_t {
-    return (1 - duty) * arr_value_;
+    return (1 - duty * inv_voltage_power_supply) * arr_value_;
   };
-  LL_TIM_OC_SetCompareCH1(timer(), to_compare(dc_a));
-  LL_TIM_OC_SetCompareCH2(timer(), to_compare(dc_b));
-  LL_TIM_OC_SetCompareCH3(timer(), to_compare(dc_c));
+  LL_TIM_OC_SetCompareCH1(timer(), to_compare(ua));
+  LL_TIM_OC_SetCompareCH2(timer(), to_compare(ub));
+  LL_TIM_OC_SetCompareCH3(timer(), to_compare(uc));
 }
 
 template <StTimerMotorConfig config>
