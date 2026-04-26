@@ -33,9 +33,6 @@ namespace internal {
 void InitGpio(const GpioEntry& entry);
 void GpioAssert(const GpioEntry& entry);
 void GpioDeassert(const GpioEntry& entry);
-
-// Sets the given alternate function on the given GPIO.
-void SetGpioAF(const GpioEntry& entry, uint32_t af);
 void ResetAllTimers();
 void EnableTimerClock(uintptr_t timer_base);
 

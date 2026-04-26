@@ -18,8 +18,6 @@ void InitGpio(const GpioEntry& entry) {
   } else {
     LL_GPIO_SetOutputPin(gpio, pin);
   }
-  LL_GPIO_SetPinMode(gpio, pin, LL_GPIO_MODE_OUTPUT);
-  LL_GPIO_SetPinOutputType(gpio, pin, LL_GPIO_OUTPUT_PUSHPULL);
 }
 
 void GpioAssert(const GpioEntry& entry) {
@@ -30,15 +28,6 @@ void GpioAssert(const GpioEntry& entry) {
 void GpioDeassert(const GpioEntry& entry) {
   if (!entry.gpio_base || entry.pin == GpioEntry::kPinUnset) return;
   entry.gpio()->BSRR = entry.active_high ? (entry.pin << 16) : entry.pin;
-}
-
-void SetGpioAF(const GpioEntry& entry, uint32_t af) {
-  if (!entry.gpio_base || entry.pin == GpioEntry::kPinUnset) return;
-  if (entry.pin < LL_GPIO_PIN_8) {
-    LL_GPIO_SetAFPin_0_7(entry.gpio(), entry.pin, af);
-  } else {
-    LL_GPIO_SetAFPin_8_15(entry.gpio(), entry.pin, af);
-  }
 }
 
 void ResetAllTimers() {

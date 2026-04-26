@@ -23,7 +23,6 @@ struct AsyncTimerSpiConfig {
   uintptr_t timer_base;
   uint32_t timer_channel_csn;
   GpioEntry csn_pin;
-  uint32_t csn_pin_af;
   uint32_t spi_baud_rate = LL_SPI_BAUDRATEPRESCALER_DIV16;
 
   TIM_TypeDef* tim() const {
@@ -98,16 +97,6 @@ class AsyncTimerAS5048ASpi : public Sensor {
 template <AsyncTimerSpiConfig config>
 void AsyncTimerAS5048ASpi<config>::init() {
   internal::EnableTimerClock(config.timer_base);
-
-  if (config.csn_pin.gpio_base != 0) {
-    LL_GPIO_SetPinMode(config.csn_pin.gpio(), config.csn_pin.pin,
-                       LL_GPIO_MODE_ALTERNATE);
-    LL_GPIO_SetPinPull(config.csn_pin.gpio(), config.csn_pin.pin,
-                       LL_GPIO_PULL_NO);
-    LL_GPIO_SetPinSpeed(config.csn_pin.gpio(), config.csn_pin.pin,
-                        LL_GPIO_SPEED_FREQ_LOW);
-    internal::SetGpioAF(config.csn_pin, config.csn_pin_af);
-  }
 
   LL_SPI_InitTypeDef spi_init = {
       .TransferDirection = LL_SPI_FULL_DUPLEX,
