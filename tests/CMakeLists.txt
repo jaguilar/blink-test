@@ -47,6 +47,7 @@ set(COMMON_TEST_SOURCES
     ../Core/Src/stm32g4xx_hal_timebase_tim.c
     ../Core/Src/sysmem.c
     ../Core/Src/syscalls.c
+    ../Core/Src/cordic.c
     ../src/uart_dma.cc
     ../startup_stm32g474xx.s
     ../src/foc_types.cc

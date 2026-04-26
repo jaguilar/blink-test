@@ -77,7 +77,7 @@ TEST_GROUP(SpiSensorTest) {
         LL_AHB2_GRP1_EnableClock(LL_AHB2_GRP1_PERIPH_GPIOB);
         LL_AHB2_GRP1_EnableClock(LL_AHB2_GRP1_PERIPH_GPIOC);
         LL_AHB1_GRP1_EnableClock(LL_AHB1_GRP1_PERIPH_DMA1);
-        LL_APB1_GRP1_EnableClock(LL_APB1_GRP1_PERIPH_TIM2);
+        LL_APB2_GRP1_EnableClock(LL_APB2_GRP1_PERIPH_TIM15);
         LL_APB1_GRP1_EnableClock(LL_APB1_GRP1_PERIPH_SPI3);
         LL_APB2_GRP1_EnableClock(LL_APB2_GRP1_PERIPH_TIM1);
         LL_APB2_GRP1_EnableClock(LL_APB2_GRP1_PERIPH_SPI1);
@@ -100,10 +100,10 @@ TEST_GROUP(SpiSensorTest) {
         gpio_init.Alternate = LL_GPIO_AF_5;
         LL_GPIO_Init(GPIOA, &gpio_init);
 
-        // Configure CSn Pin: PA15 (TIM2_CH1)
-        gpio_init.Pin = LL_GPIO_PIN_15;
+        // Configure CSn Pin: PB14 (TIM15_CH1) - AF1
+        gpio_init.Pin = LL_GPIO_PIN_14;
         gpio_init.Alternate = LL_GPIO_AF_1;
-        LL_GPIO_Init(GPIOA, &gpio_init);
+        LL_GPIO_Init(GPIOB, &gpio_init);
 
         stfoc::internal::ResetAllTimers();
     }
@@ -133,7 +133,7 @@ TEST(SpiSensorTest, VerifyAsyncReadWithMotorUpdate) {
         .spi_rx_dma_channel = LL_DMA_CHANNEL_8,
         .spi_tx_dma_base = DMA1_BASE,
         .spi_tx_dma_channel = LL_DMA_CHANNEL_7,
-        .timer_base = TIM2_BASE,
+        .timer_base = TIM15_BASE,
         .timer_channel_csn = LL_TIM_CHANNEL_CH1,
         .spi_baud_rate = LL_SPI_BAUDRATEPRESCALER_DIV256,
     };
@@ -184,9 +184,9 @@ TEST(SpiSensorTest, VerifyAsyncReadWithMotorUpdate) {
     
     printf("SPI3 hits: %lu, DMA1 hits: %lu\n", (unsigned long)spi3_irq_hits, (unsigned long)dma1_ch8_hits);
     printf("Slave RX History: 0x%04x 0x%04x\n", spi3_rx_history[0], spi3_rx_history[1]);
-    
-    sensor.update();
-    
+
+    sensor.DmaComplete();
+
     float actual_angle = sensor.getSensorAngle();
     const uint16_t* rx_buf = sensor.getRawRxBuf();
     printf("Raw RX Buffer: 0x%04x 0x%04x\n", rx_buf[0], rx_buf[1]);

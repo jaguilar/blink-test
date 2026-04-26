@@ -81,8 +81,6 @@ TEST(AdcCurrentSenseTest, ValidateDriverTriggered) {
         .shunt_resistance = 0.007f, // 7 milliohms
         .amp_gain = 1.0f,           // 1:1 for DAC direct loopback
         .v_ref = 3.3f,
-        .offset_a = 0.0f,
-        .offset_b = 0.0f,
         .sampling_time = LL_ADC_SAMPLINGTIME_640CYCLES_5,
     };
     static Stm32AdcCurrentSense<adc_config> sense;
