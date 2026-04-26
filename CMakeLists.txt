@@ -45,6 +45,8 @@ target_link_directories(${CMAKE_PROJECT_NAME} PRIVATE
 target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE
     Core/Inc
     src
+    lib/Arduino-FOC-drivers/src/utilities/stm32math
+    Drivers/CMSIS/DSP/Include
 )
 
 # Add sources to executable
@@ -56,10 +58,11 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     src/as5048a_spi_sensor.cc
     src/stm32_adc_current_sense.cc
     src/uart_dma.cc
+    lib/Arduino-FOC-drivers/src/utilities/stm32math/STM32G4CORDICTrigFunctions.cpp
 )
 
 target_compile_definitions(${CMAKE_PROJECT_NAME} PRIVATE
-    # Add user defined symbols
+    -DHAL_CORDIC_MODULE_ENABLED
 )
 
 target_compile_options(${CMAKE_PROJECT_NAME} PRIVATE
