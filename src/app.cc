@@ -2,6 +2,7 @@
 
 #include <atomic>
 #include <cassert>
+#include <cinttypes>
 #include <cmath>
 #include <cstdio>
 #include <new>  // Required for placement new
@@ -304,7 +305,7 @@ void Loop() {
         std::printf(
             "Angle: %d (mrad) Mech: %d (mrad) Velocity: %d (millrad/s) (raw: "
             "%04x) "
-            "nFLT:%d foc_nanos:%d int_nanos:%d\n",
+            "nFLT:%" PRIu32 " foc_nanos:%" PRId32 " int_nanos:%" PRId32 "\n",
             static_cast<int>(angle * 1000), static_cast<int>(mech * 1000),
             static_cast<int>(velocity * 1000), async_spi1->raw_angle,
             LL_GPIO_IsInputPinSet(GPIOA, LL_GPIO_PIN_11), foc_nanos, int_nanos);

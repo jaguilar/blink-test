@@ -1,6 +1,7 @@
 #ifndef STFOC_AS5048A_SPI_SENSOR_H
 #define STFOC_AS5048A_SPI_SENSOR_H
 
+#include <cinttypes>
 #include <cstdio>
 
 #include "cmsis_os2.h"
@@ -257,8 +258,8 @@ bool AsyncTimerAS5048ASpi<config>::TryInit() {
   bool field_too_high = (diag_raw & (1 << 11)) != 0;  // Comp High
   bool field_too_low = (diag_raw & (1 << 10)) != 0;   // Comp Low
 
-  std::printf("AS5048A Diagnostics (Register 0x3FFD): 0x%04X\n",
-              (unsigned int)diag_raw);
+  std::printf("AS5048A Diagnostics (Register 0x3FFD): 0x%04" PRIX32 "\n",
+              diag_raw);
 
   if (spi_error) {
     // If bit 14 is set, we should check the error_reg_raw (from 0x0001) for
@@ -291,8 +292,8 @@ bool AsyncTimerAS5048ASpi<config>::TryInit() {
 
   (void)internal::SyncReadSpi(config, 0x0001);
 
-  std::printf("AS5048A Initial Angle: 0x%04X (%d raw)\n",
-              (unsigned int)angle_raw, (int)clean_angle);
+  std::printf("AS5048A Initial Angle: 0x%04" PRIX32 " (%" PRIu16 " raw)\n",
+              angle_raw, clean_angle);
 
   return !(field_too_high || field_too_low || cordic_ovf || !offset_fin ||
            parity_err || framing_err || command_err);

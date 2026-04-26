@@ -1,5 +1,6 @@
 #include "foc_types.h"
 
+#include <cinttypes>
 #include <cstdio>
 
 #include "stm32g4xx_ll_bus.h"
@@ -60,8 +61,8 @@ void ResetAllTimers() {
     tim->AF2 = 0;
     tim->TISEL = 0;
     tim->OR = 0;
-    printf("  Reset %s: SMCR 0x%lx -> 0x%lx\n", name,
-           (unsigned long)smcr_before, (unsigned long)tim->SMCR);
+    printf("  Reset %s: SMCR 0x%" PRIx32 " -> 0x%" PRIx32 "\n", name,
+           smcr_before, tim->SMCR);
   }
 }
 
