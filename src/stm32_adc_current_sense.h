@@ -1,10 +1,13 @@
 #ifndef STFOC_STM32_ADC_CURRENT_SENSE_H
 #define STFOC_STM32_ADC_CURRENT_SENSE_H
 
-#include "foc_types.h"
+#include "Arduino.h"
+#include "cmsis_os2.h"
 #include "common/base_classes/CurrentSense.h"
+#include "foc_types.h"
 #include "stm32g4xx_ll_adc.h"
 #include "stm32g4xx_ll_dma.h"
+#include "stm32g4xx_ll_gpio.h"
 #include "stm32g4xx_ll_rcc.h"
 
 namespace stfoc {
@@ -22,9 +25,11 @@ struct Stm32AdcCurrentSenseConfig {
   float v_ref = 3.3f;
   float cal_a = 1.0f;
   float cal_b = 1.0f;
-  float offset_a;
-  float offset_b;
-  uint32_t sampling_time = LL_ADC_SAMPLINGTIME_47CYCLES_5;
+  GpioEntry en_pin;
+  GpioEntry cal_pin;
+  uint32_t sampling_time = LL_ADC_SAMPLINGTIME_12CYCLES_5;
+  uint32_t oversampling_ratio = LL_ADC_OVS_RATIO_4;
+  uint32_t oversampling_shift = LL_ADC_OVS_SHIFT_RIGHT_2;
 
   ADC_TypeDef* adc1() const { return reinterpret_cast<ADC_TypeDef*>(adc1_base); }
   ADC_TypeDef* adc2() const { return reinterpret_cast<ADC_TypeDef*>(adc2_base); }
@@ -45,23 +50,28 @@ class Stm32AdcCurrentSense : public CurrentSense {
   static_assert(config.adc1_dma_channel != 0xFFFFFFFF && config.adc2_dma_channel != 0xFFFFFFFF, "Both DMA channels must be provided");
 
   Stm32AdcCurrentSense() : CurrentSense() {
-    offset_ia = config.offset_a;
-    offset_ib = config.offset_b;
+    offset_ia = 1.65f;
+    offset_ib = 1.65f;
   }
 
   int init() override;
   PhaseCurrent_s getPhaseCurrents() override;
 
   template <uintptr_t leader_timer_base>
-  void SlaveToTimerUpdate();
+  void AsyncReadFromMotorUpdate() {
+    LL_ADC_REG_StartConversion(config.adc1());
+    LL_ADC_REG_StartConversion(config.adc2());
+  }
 
   void EnableTrigger();
   void DisableTrigger();
 
+  template <uintptr_t leader_timer_base>
+  void SlaveToTimerUpdate();
+
   const uint16_t* GetAdc1Buffer() const { return &adc1_val_; }
   const uint16_t* GetAdc2Buffer() const { return &adc2_val_; }
 
- private:
   alignas(uint32_t) uint16_t adc1_val_ = 0;
   alignas(uint32_t) uint16_t adc2_val_ = 0;
 };
@@ -94,6 +104,13 @@ int Stm32AdcCurrentSense<config>::init() {
   LL_ADC_REG_SetSequencerRanks(config.adc2(), LL_ADC_REG_RANK_1, config.adc2_channel);
   LL_ADC_SetChannelSamplingTime(config.adc2(), config.adc2_channel, config.sampling_time);
   LL_ADC_REG_SetDMATransfer(config.adc2(), LL_ADC_REG_DMA_TRANSFER_UNLIMITED);
+
+  LL_ADC_SetOverSamplingScope(config.adc1(), LL_ADC_OVS_GRP_REGULAR_CONTINUED);
+  LL_ADC_ConfigOverSamplingRatioShift(config.adc1(), config.oversampling_ratio,
+                                      config.oversampling_shift);
+  LL_ADC_SetOverSamplingScope(config.adc2(), LL_ADC_OVS_GRP_REGULAR_CONTINUED);
+  LL_ADC_ConfigOverSamplingRatioShift(config.adc2(), config.oversampling_ratio,
+                                      config.oversampling_shift);
 
   LL_DMA_InitTypeDef dma_init = {
       .Direction = LL_DMA_DIRECTION_PERIPH_TO_MEMORY,
@@ -130,18 +147,102 @@ int Stm32AdcCurrentSense<config>::init() {
   enable_adc(config.adc1());
   enable_adc(config.adc2());
 
+  // Perform Offset Calibration
+  if (config.cal_pin.gpio_base != 0 &&
+      config.cal_pin.pin != GpioEntry::kPinUnset) {
+    internal::InitGpio(config.en_pin);
+    internal::InitGpio(config.cal_pin);
+
+    // If an enable pin is provided, we must assert it to power on the
+    // amplifiers before we can measure their offsets.
+    if (config.en_pin.gpio_base != 0) {
+      internal::GpioAssert(config.en_pin);
+      osDelay(2);  // Wait for DRV8304 to wake up from sleep
+    }
+
+    internal::GpioAssert(config.cal_pin);
+    osDelay(10);
+
+    int tries = 0;
+    while (true) {
+      // Temporarily disable DMA to allow manual polling of EOC, and ensure
+      // software trigger is selected.
+      LL_ADC_REG_SetDMATransfer(config.adc1(), LL_ADC_REG_DMA_TRANSFER_NONE);
+      LL_ADC_REG_SetDMATransfer(config.adc2(), LL_ADC_REG_DMA_TRANSFER_NONE);
+      LL_ADC_REG_SetTriggerSource(config.adc1(), LL_ADC_REG_TRIG_SOFTWARE);
+      LL_ADC_REG_SetTriggerSource(config.adc2(), LL_ADC_REG_TRIG_SOFTWARE);
+
+      float sum_a = 0;
+      float sum_b = 0;
+      constexpr int kSamples = 100;
+      for (int i = 0; i < kSamples; i++) {
+        LL_ADC_REG_StartConversion(config.adc1());
+        LL_ADC_REG_StartConversion(config.adc2());
+        while (!LL_ADC_IsActiveFlag_EOC(config.adc1()));
+        while (!LL_ADC_IsActiveFlag_EOC(config.adc2()));
+        sum_a +=
+            static_cast<float>(LL_ADC_REG_ReadConversionData12(config.adc1()));
+        sum_b +=
+            static_cast<float>(LL_ADC_REG_ReadConversionData12(config.adc2()));
+      }
+
+      // Re-enable DMA
+      LL_ADC_REG_SetDMATransfer(config.adc1(),
+                                LL_ADC_REG_DMA_TRANSFER_UNLIMITED);
+      LL_ADC_REG_SetDMATransfer(config.adc2(),
+                                LL_ADC_REG_DMA_TRANSFER_UNLIMITED);
+
+      float counts_to_volts = config.v_ref / 4096.0f;
+      float measured_ia = (sum_a / kSamples) * counts_to_volts;
+      float measured_ib = (sum_b / kSamples) * counts_to_volts;
+
+      float center = config.v_ref / 2.0f;
+      if (std::abs(measured_ia - center) < 0.1f &&
+          std::abs(measured_ib - center) < 0.1f) {
+        offset_ia = measured_ia;
+        offset_ib = measured_ib;
+        std::printf(
+            "[ADC] Calibration complete: Offset A: %dmV, Offset B: %dmV\n",
+            static_cast<int>(offset_ia * 1000.0f),
+            static_cast<int>(offset_ib * 1000.0f));
+        break;
+      }
+
+      std::printf(
+          "[ADC] WARNING: Implausible offsets measured! A: %dmV, B: %dmV "
+          "(Center: %dmV). Retrying...\n",
+          static_cast<int>(measured_ia * 1000.0f),
+          static_cast<int>(measured_ib * 1000.0f),
+          static_cast<int>(center * 1000.0f));
+
+      tries++;
+      if (tries < 10) {
+        osDelay(10);
+      } else {
+        osDelay(1000);
+      }
+    }
+
+    internal::GpioDeassert(config.cal_pin);
+  }
+
   initialized = true;
   return 1;
 }
 
 template <Stm32AdcCurrentSenseConfig config>
 PhaseCurrent_s Stm32AdcCurrentSense<config>::getPhaseCurrents() {
-  float counts_to_volts = config.v_ref / 4096.0f;
-  float volts_per_amp = config.shunt_resistance * config.amp_gain;
-  float ia = ((static_cast<float>(adc1_val_) * counts_to_volts) - config.offset_a) / volts_per_amp * config.cal_a;
-  float ib = ((static_cast<float>(adc2_val_) * counts_to_volts) - config.offset_b) / volts_per_amp * config.cal_b;
-  float ic = -(ia + ib);
-  return {ia, ib, ic};
+  const uint16_t val_ia = adc1_val_;
+  const uint16_t val_ib = adc2_val_;
+  constexpr float counts_to_volts = config.v_ref / 4096.0f;
+  constexpr float volts_per_amp = config.shunt_resistance * config.amp_gain;
+  const float ia =
+      ((static_cast<float>(val_ia) * counts_to_volts) - offset_ia) /
+      volts_per_amp * config.cal_a;
+  const float ib =
+      ((static_cast<float>(val_ib) * counts_to_volts) - offset_ib) /
+      volts_per_amp * config.cal_b;
+  return {ia, ib, 0};
 }
 
 template <Stm32AdcCurrentSenseConfig config>
