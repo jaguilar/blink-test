@@ -9,6 +9,7 @@
 #include "CppUTest/TestHarness.h"
 #include "cmsis_os2.h"
 #include "foc_types.h"
+#include "uart_dma.h"
 
 extern "C" {
     // STM32 HAL / CMSIS includes if needed
@@ -16,7 +17,7 @@ extern "C" {
 #include "main.h"
 #include "usart.h"
 
-extern UART_HandleTypeDef huart1;
+extern UART_HandleTypeDef hlpuart1;
 
 // Stubs for newlib-nano missing wide character functions that GTest/CppUTest might link against
 #ifndef putwc
@@ -70,8 +71,12 @@ wint_t ungetwc(wint_t, FILE*) { return 0; }
 extern "C" {
 
 void Setup() {
+  // Wait for UART monitor to connect
+  osDelay(1000);
+
   // Initialization of HAL and MX_..._Init is handled by main.c.
   // We explicitly enable the UART here to ensure printf works.
+  UartDma_Init(&hlpuart1);
   printf("\n\nUART enabled (Printf)\n");
 
   // Enable DWT Cycle Counter for high-precision timing

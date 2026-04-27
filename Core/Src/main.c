@@ -22,6 +22,7 @@
 #include "adc.h"
 #include "cordic.h"
 #include "dma.h"
+#include "i2c.h"
 #include "usart.h"
 #include "spi.h"
 #include "tim.h"
@@ -127,6 +128,7 @@ int main(void)
   MX_CORDIC_Init();
   MX_TIM15_Init();
   MX_LPUART1_UART_Init();
+  MX_I2C1_Init();
   /* USER CODE BEGIN 2 */
   printf("\r\n--- MCU BOOT ---\r\n");
   /* USER CODE END 2 */

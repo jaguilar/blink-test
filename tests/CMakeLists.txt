@@ -48,12 +48,14 @@ set(COMMON_TEST_SOURCES
     ../Core/Src/sysmem.c
     ../Core/Src/syscalls.c
     ../Core/Src/cordic.c
+    ../Core/Src/i2c.c
     ../src/uart_dma.cc
     ../startup_stm32g474xx.s
     ../src/foc_types.cc
     ../src/stm32_motor_driver.cc
     ../src/as5048a_spi_sensor.cc
     ../src/stm32_adc_current_sense.cc
+    ../src/mpu6050.cc
 )
 
 add_executable(blink-tests
@@ -72,6 +74,11 @@ add_executable(adc-current-sense-test
     test_adc_current_sense.cc
 )
 
+add_executable(mpu6050-test
+    ${COMMON_TEST_SOURCES}
+    test_mpu6050.cc
+)
+
 # Pull in the same libraries as the main application to be able to test them
 set(TEST_LIBS
     stm32cubemx
@@ -88,8 +95,9 @@ set(TEST_LIBS
 target_link_libraries(blink-tests ${TEST_LIBS})
 target_link_libraries(spi-sensor-test ${TEST_LIBS})
 target_link_libraries(adc-current-sense-test ${TEST_LIBS})
+target_link_libraries(mpu6050-test ${TEST_LIBS})
 
-foreach(test_exe blink-tests spi-sensor-test adc-current-sense-test)
+foreach(test_exe blink-tests spi-sensor-test adc-current-sense-test mpu6050-test)
     target_include_directories(${test_exe} PRIVATE
         ../Core/Inc
         ../src
@@ -105,6 +113,7 @@ set(TEST_LINK_OPTIONS
 target_link_options(blink-tests PRIVATE ${TEST_LINK_OPTIONS})
 target_link_options(spi-sensor-test PRIVATE ${TEST_LINK_OPTIONS})
 target_link_options(adc-current-sense-test PRIVATE ${TEST_LINK_OPTIONS})
+target_link_options(mpu6050-test PRIVATE ${TEST_LINK_OPTIONS})
 
 # CTest integration needs a command to run the simulation
 # [HIL TEST PLACEHOLDER] - To be implemented

@@ -38,6 +38,7 @@ show_help() {
 # --- Argument Parsing ---
 MODE="hil"
 CMAKE_ARGS=()
+TIMEOUT=10
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -46,6 +47,7 @@ while [[ $# -gt 0 ]]; do
         --build)   MODE="build"; shift ;;
         --flash)   MODE="flash"; shift ;;
         --monitor) MODE="monitor"; shift ;;
+        --timeout) TIMEOUT="$2"; shift 2 ;;
         -h|--help) show_help; exit 0 ;;
         *)         CMAKE_ARGS+=("$1"); shift ;;
     esac
@@ -80,5 +82,5 @@ fi
 # --- 3. Monitor Phase ---
 if [[ "$MODE" == "hil" || "$MODE" == "monitor" ]]; then
     echo -e "${GREEN}=== Starting UART Monitor on $UART_DEV ===${NC}"
-    python3 scripts/monitor_uart.py
+    python3 scripts/monitor_uart.py --timeout "$TIMEOUT"
 fi
