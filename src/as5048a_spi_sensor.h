@@ -48,7 +48,7 @@ void BusyWaitNs(uint32_t ns);
 }  // namespace internal
 
 template <AsyncTimerSpiConfig config>
-class AsyncTimerAS5048ASpi : public Sensor {
+class AsyncTimerAS5048ASpi final : public Sensor {
  public:
   void init() override;
 
@@ -57,14 +57,19 @@ class AsyncTimerAS5048ASpi : public Sensor {
 
   void DmaComplete();
 
-  float getSensorAngle() override { return angle_prev; }
-  float getAngle() override { return total_count * (2.0f * _PI / 0x4000); }
+  float getSensorAngle() override {
+    return (total_count & 0x3FFF) * (2.0f * _PI / 16384.0f);
+  }
+  float getAngle() override { return total_count * (2.0f * _PI / 16384.0f); }
   double getPreciseAngle() override {
     return total_count * (2.0 * (double)_PI / 16384.0);
   }
-  float getMechanicalAngle() override { return angle_prev; }
-  int32_t getFullRotations() override { return total_count >> 14; }
-  int32_t getFullRotations() const { return total_count >> 14; }
+  float getMechanicalAngle() override {
+    return (total_count & 0x3FFF) * (2.0f * _PI / 16384.0f);
+  }
+  int32_t getFullRotations() override {
+    return static_cast<int32_t>(total_count >> 14);
+  }
 
   void update() override {}
 
@@ -218,8 +223,6 @@ void AsyncTimerAS5048ASpi<config>::init() {
   uint32_t initial_angle = internal::SyncReadSpi(config, 0x3FFF) & 0x3FFF;
   this->raw_angle = initial_angle;
   this->total_count = initial_angle;
-  this->angle_prev = static_cast<float>(initial_angle) * (2.0f * _PI / 0x4000);
-  this->full_rotations = 0;
   this->vel_last_count = initial_angle;
   this->vel_last_us = _micros();
 
@@ -304,20 +307,18 @@ void AsyncTimerAS5048ASpi<config>::DmaComplete() {
   if (!pending_dma_) {
     return;
   }
-  const uint16_t raw_angle = spi_rx_buf_[1] & 0x3FFF;
+  const uint16_t next_raw_angle = spi_rx_buf_[1] & 0x3FFF;
 
-  // A negative wrap around will appear to be a large positive diff (1 in the
-  // 14th bit).
-  const uint16_t raw_diff = (raw_angle - this->raw_angle) & 0x3FFF;
-  // Move the high bit into the sign position, cast to an int16, then do a
-  // signed shift right (divide by 4). Now that large positive diff looks like a
-  // small negative diff.
+  // Handle the 14-bit wrap-around by calculating a signed difference.
+  // This is the fastest way to update the 64-bit accumulator.
+  const uint16_t raw_diff =
+      (next_raw_angle - static_cast<uint16_t>(total_count & 0x3FFF)) & 0x3FFF;
   const int16_t signed_diff = static_cast<int16_t>(raw_diff << 2) >> 2;
 
-  this->raw_angle = raw_angle;
-  this->angle_prev = static_cast<float>(raw_angle) * (2.0f * _PI / 0x4000);
   this->total_count += signed_diff;
-  this->full_rotations = total_count >> 14;
+  this->raw_angle = next_raw_angle;
+
+  assert((total_count & 0x3FFF) == next_raw_angle);
 
   pending_dma_ = false;
 }
