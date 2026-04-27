@@ -56,6 +56,7 @@ set(COMMON_TEST_SOURCES
     ../src/as5048a_spi_sensor.cc
     ../src/stm32_adc_current_sense.cc
     ../src/mpu6050.cc
+    ../lib/Arduino-FOC-drivers/src/utilities/stm32math/STM32G4CORDICTrigFunctions.cpp
 )
 
 add_executable(blink-tests
@@ -101,6 +102,7 @@ foreach(test_exe blink-tests spi-sensor-test adc-current-sense-test mpu6050-test
     target_include_directories(${test_exe} PRIVATE
         ../Core/Inc
         ../src
+        ../lib/Arduino-FOC-drivers/src/utilities/stm32math
     )
 endforeach()
 

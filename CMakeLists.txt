@@ -58,6 +58,7 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     src/as5048a_spi_sensor.cc
     src/stm32_adc_current_sense.cc
     src/uart_dma.cc
+    src/mpu6050.cc
     lib/Arduino-FOC-drivers/src/utilities/stm32math/STM32G4CORDICTrigFunctions.cpp
 )
 

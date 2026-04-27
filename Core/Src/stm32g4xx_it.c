@@ -25,6 +25,7 @@
 #include <stdio.h>
 
 #include "app.h"
+#include "mpu6050.h"
 #include "stm32g4xx_ll_usart.h"
 
 
@@ -275,7 +276,7 @@ void EXTI9_5_IRQHandler(void)
   {
     LL_EXTI_ClearFlag_0_31(LL_EXTI_LINE_6);
     /* USER CODE BEGIN LL_EXTI_LINE_6 */
-
+    Mpu6050_HandleInterrupt();
     /* USER CODE END LL_EXTI_LINE_6 */
   }
   /* USER CODE BEGIN EXTI9_5_IRQn 1 */
