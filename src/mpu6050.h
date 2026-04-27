@@ -2,6 +2,7 @@
 #define STFOC_MPU6050_H
 
 #include <cstdint>
+#include "cmsis_os2.h"
 #include "i2c.h"
 
 namespace stfoc {
@@ -23,14 +24,24 @@ class Mpu6050 {
 
   static constexpr uint8_t I2C_ADDR = 0x68 << 1;  // HAL uses left-shifted address
 
-  explicit Mpu6050(I2C_HandleTypeDef* hi2c) : hi2c_(hi2c) {}
+  explicit Mpu6050(I2C_HandleTypeDef* hi2c);
+  ~Mpu6050();
 
   bool Init();
   bool ReadAccel(float& ax, float& ay, float& az);
   bool ReadGyro(float& gx, float& gy, float& gz);
 
+  // Called from HAL callbacks
+  void OnTransferComplete();
+  void OnTransferError();
+
  private:
   I2C_HandleTypeDef* hi2c_;
+  osEventFlagsId_t event_flags_;
+  static constexpr uint32_t FLAG_DONE = 0x01;
+  static constexpr uint32_t FLAG_ERROR = 0x02;
+
+  bool WaitForTransfer(uint32_t timeout_ms = 100);
 
   bool WriteReg(uint8_t reg, uint8_t value);
   bool ReadReg(uint8_t reg, uint8_t& value);

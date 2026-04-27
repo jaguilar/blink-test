@@ -98,6 +98,13 @@ void Error_Handler(void);
 #define M1_PHASEC_OUT_GPIO_Port GPIOA
 #define M1_BRAKE2_Pin LL_GPIO_PIN_11
 #define M1_BRAKE2_GPIO_Port GPIOA
+#define IMU_SCL_Pin LL_GPIO_PIN_15
+#define IMU_SCL_GPIO_Port GPIOA
+#define IMU_INT_Pin LL_GPIO_PIN_6
+#define IMU_INT_GPIO_Port GPIOB
+#define IMU_INT_EXTI_IRQn EXTI9_5_IRQn
+#define IMU_SDA_Pin LL_GPIO_PIN_7
+#define IMU_SDA_GPIO_Port GPIOB
 
 /* USER CODE BEGIN Private defines */
 
