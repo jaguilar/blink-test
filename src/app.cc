@@ -253,9 +253,9 @@ void Setup() {
     }
   }
 
-  motor->phase_resistance = 0.06;
+  motor->phase_resistance = 0.06f;
   motor->axis_inductance.d = motor->axis_inductance.q =
-      motor->phase_inductance = 0.000060;  // 60uH (estimate)
+      motor->phase_inductance = 0.000060f;  // 60uH (estimate)
 
   std::printf("[Setup] Tuning Current Controller...\n");
   motor->tuneCurrentController(500);
