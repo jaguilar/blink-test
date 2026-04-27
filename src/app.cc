@@ -142,21 +142,14 @@ void Setup() {
   // have a chance to connect.
   osDelay(2000);
 
-  // 1. Core Init
   EnsureCycleCounterEnabled();
 
   std::printf("\r\n--- STM32 FOC Recovery Boot ---\r\n");
   osDelay(20);
 
-  // Configure PA11 as nFLT input with pull-up
-  LL_GPIO_SetPinMode(GPIOA, LL_GPIO_PIN_11, LL_GPIO_MODE_INPUT);
-  LL_GPIO_SetPinPull(GPIOA, LL_GPIO_PIN_11, LL_GPIO_PULL_UP);
-
-  // 3. Initialize Hardware HAL/LL
   UartDma_Init(&hlpuart1);
   osDelay(100);  // Allow early logs to flush
 
-  // Configure CORDIC
   // Precision = 3 (12 iterations), Function = Sine (0), Two results (NRES=1)
   // 12 iterations provide ~3.6 decimal digits of precision, meeting the 3-digit
   // requirement.
@@ -165,7 +158,6 @@ void Setup() {
 
   std::printf("[Setup] Core hardware initialized. DMA logging active.\n");
 
-  // 4. Manual Construction
   std::printf("[Setup] Constructing Driver...\n");
   motor1_driver = new (driver_buf) MotorDriverInst();
   osDelay(10);
