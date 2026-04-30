@@ -16,6 +16,7 @@
 #include "communication/SimpleFOCDebug.h"
 #include "gpio.h"
 #include "i2c.h"
+#include "kalman_filter.h"
 #include "main.h"
 #include "mpu6050.h"
 #include "spi.h"
@@ -116,6 +117,9 @@ static MotorDriverInst* motor1_driver = nullptr;
 static SensorInst* async_spi1 = nullptr;
 static BLDCMotor* motor = nullptr;
 static CurrentSenseInst* current_sense = nullptr;
+
+static KalmanFilter kalman_filter;
+static uint32_t last_kalman_tick = 0;
 
 extern "C" {
 
@@ -285,6 +289,10 @@ void Loop() {
   uint32_t last_print_time = 0;
   uint32_t last_dir_change = HAL_GetTick();
   while (true) {
+    // Wait for the MPU6050 data-ready event (set on DMA completion)
+    // or timeout after 50ms to keep the loop alive for buttons/other tasks.
+    osEventFlagsWait(g_imu_event_flags, 0x01, osFlagsWaitAny, 50);
+
     // Check for button press (PC13 active-high) for immediate sleep
     if (LL_GPIO_IsInputPinSet(GPIOC, LL_GPIO_PIN_13)) {
       EnterSleepMode();
@@ -298,6 +306,25 @@ void Loop() {
     if (HAL_GetTick() - last_dir_change > 5000) {
       motor->target = -motor->target;
       last_dir_change = HAL_GetTick();
+    }
+
+    float ax = 0, ay = 0, az = 0, gx = 0, gy = 0, gz = 0;
+    if (g_mpu6050) {
+      g_mpu6050->GetAccel(ax, ay, az);
+      g_mpu6050->GetGyro(gx, gy, gz);
+
+      // Kalman Filter Update
+      uint32_t now = HAL_GetTick();
+      if (last_kalman_tick == 0) last_kalman_tick = now;
+      float dt = (now - last_kalman_tick) / 1000.0f;
+      last_kalman_tick = now;
+
+      if (dt > 0) {
+        // X is downward (reports -1g when vertical), Y is right.
+        float accel_tilt = atan2f(ay, -ax) * 180.0f / M_PI;
+        // Z is the axis of rotation.
+        kalman_filter.update(accel_tilt, gz, dt);
+      }
     }
 
     if (HAL_GetTick() - last_print_time >= 1000) {
@@ -342,18 +369,21 @@ void Loop() {
                     static_cast<int>(current_sense->offset_ib * 1000.0f));
       }
       if (g_mpu6050) {
-        float ax, ay, az, gx, gy, gz;
-        g_mpu6050->GetAccel(ax, ay, az);
-        g_mpu6050->GetGyro(gx, gy, gz);
         std::printf(
             "MPU6050: Accel[%d %d %d]mg Gyro[%d %d %d]md/s\n",
             static_cast<int>(ax * 1000.0f), static_cast<int>(ay * 1000.0f),
             static_cast<int>(az * 1000.0f), static_cast<int>(gx * 1000.0f),
             static_cast<int>(gy * 1000.0f), static_cast<int>(gz * 1000.0f));
+
+        float tilt = kalman_filter.getAngle();
+        float velocity = kalman_filter.getRate();
+
+        std::printf("Kalman: Tilt: %d (mdeg) Velocity: %d (mdeg/s)\n",
+                    static_cast<int>(tilt * 1000.0f),
+                    static_cast<int>(velocity * 1000.0f));
       }
       last_print_time = HAL_GetTick();
     }
-    osDelay(50);  // Poll frequently for button response
   }
 }
 

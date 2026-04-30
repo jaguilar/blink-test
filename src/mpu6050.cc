@@ -116,9 +116,6 @@ bool Mpu6050::ReadGyro(float& gx, float& gy, float& gz) {
 }
 
 void Mpu6050::HandleInterrupt() {
-  if (external_event_flags_) {
-    osEventFlagsSet(external_event_flags_, external_event_bit_);
-  }
   // Kick off non-blocking DMA read of all sensor data (14 bytes)
   // Only start if the I2C is not already busy with another transfer.
   if (hi2c_->State == HAL_I2C_STATE_READY) {
@@ -173,6 +170,9 @@ void Mpu6050::OnTransferComplete() {
   if (is_background_reading_) {
     ParseDmaBuffer();
     is_background_reading_ = false;
+    if (external_event_flags_) {
+      osEventFlagsSet(external_event_flags_, external_event_bit_);
+    }
   }
   osEventFlagsSet(event_flags_, FLAG_DONE);
 }
