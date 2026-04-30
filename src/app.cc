@@ -15,7 +15,9 @@
 #include "common/foc_utils.h"
 #include "communication/SimpleFOCDebug.h"
 #include "gpio.h"
+#include "i2c.h"
 #include "main.h"
+#include "mpu6050.h"
 #include "spi.h"
 #include "stm32_adc_current_sense.h"
 #include "stm32_motor_driver.h"
@@ -37,11 +39,11 @@ using namespace stfoc;
 extern UART_HandleTypeDef hlpuart1;
 
 // Motor Configuration Constants
-constexpr float kMotorTarget = 4.0f;
+constexpr float kMotorTarget = 0.6f;
 constexpr MotionControlType kMotionController = MotionControlType::torque;
 constexpr TorqueControlType kTorqueController = TorqueControlType::foc_current;
-constexpr float kCurrentLimit = 4.f;
-constexpr float kVoltageLimit = .7f;
+constexpr float kCurrentLimit = 8.f;
+constexpr float kVoltageLimit = .8f;
 constexpr float kPowerSupplyVoltage = 8.0f;
 constexpr float kInitFocVoltage = 0.6f;
 
@@ -137,6 +139,19 @@ void EnterSleepMode() {
   // Code should not reach here after standby unless entry failed
 }
 
+void InitMpu6050() {
+  std::printf("[Setup] Initializing MPU6050 via DMA...\n");
+  g_imu_event_flags = osEventFlagsNew(nullptr);
+  static uint8_t mpu_buf[sizeof(Mpu6050)];
+  g_mpu6050 = new (mpu_buf) Mpu6050(&hi2c1, g_imu_event_flags, 0x01);
+
+  if (g_mpu6050->Init()) {
+    std::printf("  [OK] MPU6050 initialized.\n");
+  } else {
+    std::printf("  [FAIL] MPU6050 initialization failed.\n");
+  }
+}
+
 void Setup() {
   // Wait a couple of seconds so if someone is trying to see early logs they
   // have a chance to connect.
@@ -149,6 +164,8 @@ void Setup() {
 
   UartDma_Init(&hlpuart1);
   osDelay(100);  // Allow early logs to flush
+
+  InitMpu6050();
 
   // Precision = 3 (12 iterations), Function = Sine (0), Two results (NRES=1)
   // 12 iterations provide ~3.6 decimal digits of precision, meeting the 3-digit
@@ -323,6 +340,16 @@ void Loop() {
                     static_cast<int>(currents.c * 1000.0f),
                     static_cast<int>(current_sense->offset_ia * 1000.0f),
                     static_cast<int>(current_sense->offset_ib * 1000.0f));
+      }
+      if (g_mpu6050) {
+        float ax, ay, az, gx, gy, gz;
+        g_mpu6050->GetAccel(ax, ay, az);
+        g_mpu6050->GetGyro(gx, gy, gz);
+        std::printf(
+            "MPU6050: Accel[%d %d %d]mg Gyro[%d %d %d]md/s\n",
+            static_cast<int>(ax * 1000.0f), static_cast<int>(ay * 1000.0f),
+            static_cast<int>(az * 1000.0f), static_cast<int>(gx * 1000.0f),
+            static_cast<int>(gy * 1000.0f), static_cast<int>(gz * 1000.0f));
       }
       last_print_time = HAL_GetTick();
     }
