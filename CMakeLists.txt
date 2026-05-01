@@ -31,6 +31,20 @@ message("Build type: " ${CMAKE_BUILD_TYPE})
 # Enable CMake support for ASM and C languages
 enable_language(C CXX ASM)
 
+# Disable searching the User Package Registry to ensure hermeticity
+set(CMAKE_FIND_USE_PACKAGE_REGISTRY NEVER)
+set(CMAKE_FIND_USE_SYSTEM_PACKAGE_REGISTRY NEVER)
+
+# Fetch Eigen hermetically
+include(FetchContent)
+FetchContent_Declare(
+    Eigen3
+    GIT_REPOSITORY https://gitlab.com/libeigen/eigen.git
+    GIT_TAG        3.4.0 
+)
+FetchContent_MakeAvailable(Eigen3)
+
+
 # Create an executable object type
 add_executable(${CMAKE_PROJECT_NAME})
 
@@ -85,7 +99,7 @@ target_link_libraries(${CMAKE_PROJECT_NAME}
     Arduino
     Arduino-FOC
     lwrb
-    # Add user defined libraries
+    Eigen3::Eigen
 )
 
 target_link_options(${CMAKE_PROJECT_NAME} PRIVATE

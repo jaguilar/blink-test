@@ -80,6 +80,11 @@ add_executable(mpu6050-test
     test_mpu6050.cc
 )
 
+add_executable(kalman-filter-test
+    ${COMMON_TEST_SOURCES}
+    test_kalman_filter.cc
+)
+
 # Pull in the same libraries as the main application to be able to test them
 set(TEST_LIBS
     stm32cubemx
@@ -91,14 +96,16 @@ set(TEST_LIBS
     CppUTest
     CppUTestExt
     lwrb
+    Eigen3::Eigen
 )
 
 target_link_libraries(blink-tests ${TEST_LIBS})
 target_link_libraries(spi-sensor-test ${TEST_LIBS})
 target_link_libraries(adc-current-sense-test ${TEST_LIBS})
 target_link_libraries(mpu6050-test ${TEST_LIBS})
+target_link_libraries(kalman-filter-test ${TEST_LIBS})
 
-foreach(test_exe blink-tests spi-sensor-test adc-current-sense-test mpu6050-test)
+foreach(test_exe blink-tests spi-sensor-test adc-current-sense-test mpu6050-test kalman-filter-test)
     target_include_directories(${test_exe} PRIVATE
         ../Core/Inc
         ../src
@@ -116,6 +123,7 @@ target_link_options(blink-tests PRIVATE ${TEST_LINK_OPTIONS})
 target_link_options(spi-sensor-test PRIVATE ${TEST_LINK_OPTIONS})
 target_link_options(adc-current-sense-test PRIVATE ${TEST_LINK_OPTIONS})
 target_link_options(mpu6050-test PRIVATE ${TEST_LINK_OPTIONS})
+target_link_options(kalman-filter-test PRIVATE ${TEST_LINK_OPTIONS})
 
 # CTest integration needs a command to run the simulation
 # [HIL TEST PLACEHOLDER] - To be implemented
