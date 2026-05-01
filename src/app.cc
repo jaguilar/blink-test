@@ -40,7 +40,7 @@ using namespace stfoc;
 extern UART_HandleTypeDef hlpuart1;
 
 // Motor Configuration Constants
-constexpr float kMotorTarget = 0.6f;
+constexpr float kMotorTarget = 2.6f;
 constexpr MotionControlType kMotionController = MotionControlType::torque;
 constexpr TorqueControlType kTorqueController = TorqueControlType::foc_current;
 constexpr float kCurrentLimit = 8.f;
@@ -120,6 +120,7 @@ static CurrentSenseInst* current_sense = nullptr;
 
 static KalmanFilter kalman_filter;
 static uint32_t last_kalman_tick = 0;
+
 
 extern "C" {
 
@@ -274,7 +275,7 @@ void Setup() {
   motor->tuneCurrentController(500);
 
   std::printf("[Setup] Final Enable...\n");
-  motor->enable();
+  motor->disable();
 
   std::printf("[Setup] BOOT COMPLETE. Entering loop.\n");
   osDelay(20);
@@ -350,6 +351,63 @@ void LogMiscellaneousData() {
   }
 }
 
+void CharacterizeFall(float accel_tilt, float kalman_angle,
+                      float kalman_velocity) {
+  struct FallSample {
+    float raw_tilt;
+    float kalman_angle;
+    float kalman_velocity;
+  };
+
+  static constexpr size_t kMaxSamples = 500;
+  static FallSample fall_buffer[kMaxSamples];
+  static size_t fall_sample_count = 0;
+
+  enum class FallState { WAIT_FOR_RESET, ARMED, RECORDING };
+  static FallState fall_state = FallState::WAIT_FOR_RESET;
+
+  // State machine for fall characterization
+  float abs_angle = std::abs(kalman_angle);
+
+  switch (fall_state) {
+    case FallState::WAIT_FOR_RESET:
+      if (abs_angle < 1.0f) {
+        fall_state = FallState::ARMED;
+        fall_sample_count = 0;
+      }
+      break;
+    case FallState::ARMED:
+      if (abs_angle > 8.0f) {
+        fall_state = FallState::RECORDING;
+      }
+      break;
+    case FallState::RECORDING:
+      if (fall_sample_count < kMaxSamples) {
+        fall_buffer[fall_sample_count++] = {accel_tilt, kalman_angle,
+                                            kalman_velocity};
+      }
+      if (abs_angle > 25.0f) {
+        // Fall completed!
+        std::printf("raw_tilt_mdeg,kalman_angle_mdeg,kalman_velocity_mdeg_s\n");
+        for (size_t i = 0; i < fall_sample_count; ++i) {
+          float a = std::abs(fall_buffer[i].kalman_angle);
+          if (a >= 10.0f && a <= 20.0f) {
+            std::printf("%d,%d,%d\n",
+                        static_cast<int>(fall_buffer[i].raw_tilt * 1000.0f),
+                        static_cast<int>(fall_buffer[i].kalman_angle * 1000.0f),
+                        static_cast<int>(fall_buffer[i].kalman_velocity * 1000.0f));
+          }
+        }
+        std::printf("--- End of Fall ---\n");
+        fall_state = FallState::WAIT_FOR_RESET;
+      } else if (abs_angle < 0.5f) {
+        // If it returns to 0 without hitting 25, reset.
+        fall_state = FallState::WAIT_FOR_RESET;
+      }
+      break;
+  }
+}
+
 void UpdateKalmanFilter() {
   float ax = 0, ay = 0, az = 0, gx = 0, gy = 0, gz = 0;
   g_mpu6050->GetAccel(ax, ay, az);
@@ -368,6 +426,7 @@ void UpdateKalmanFilter() {
     float kalman_angle = kalman_filter.update(accel_tilt, gz, dt);
     float kalman_velocity = kalman_filter.getRate();
 
+    CharacterizeFall(accel_tilt, kalman_angle, kalman_velocity);
   }
 }
 
