@@ -44,7 +44,7 @@ constexpr float kMotorTarget = 0.6f;
 constexpr MotionControlType kMotionController = MotionControlType::torque;
 constexpr TorqueControlType kTorqueController = TorqueControlType::foc_current;
 constexpr float kCurrentLimit = 8.f;
-constexpr float kVoltageLimit = .8f;
+constexpr float kVoltageLimit = 2.5f;
 constexpr float kPowerSupplyVoltage = 8.0f;
 constexpr float kInitFocVoltage = 0.6f;
 
@@ -335,7 +335,7 @@ void LogMiscellaneousData() {
     g_mpu6050->GetAccel(ax, ay, az);
     g_mpu6050->GetGyro(gx, gy, gz);
     std::printf(
-        "MPU6050: Accel[%d %d %d]mg Gyro[%d %d %d]md/s last_error: %u\n",
+        "MPU6050: Accel[%d %d %d]mg Gyro[%d %d %d]md/s last_error: %lu\n",
         static_cast<int>(ax * 1000.0f), static_cast<int>(ay * 1000.0f),
         static_cast<int>(az * 1000.0f), static_cast<int>(gx * 1000.0f),
         static_cast<int>(gy * 1000.0f), static_cast<int>(gz * 1000.0f),
@@ -365,13 +365,84 @@ void UpdateKalmanFilter() {
     // X is downward (reports -1g when vertical), Y is right.
     float accel_tilt = atan2f(ay, -ax) * 180.0f / _PI;
     // Z is the axis of rotation.
-    float kalman_angle = kalman_filter.update(accel_tilt, gz, dt);
-    float kalman_velocity = kalman_filter.getRate();
+    kalman_filter.update(accel_tilt, gz, dt);
+  }
+}
 
+void CharacterizeInertia() {
+  struct Sample {
+    float time;
+    float angle;
+  };
+  // Reduced to 500 samples to fit in 80KB RAM (200Hz * 2s = 400 samples).
+  static constexpr int kMaxSamples = 500;
+  static Sample samples[kMaxSamples];
+
+  if (!motor) return;
+
+  const float current_limit = motor->current_limit;
+  const float current_step = current_limit / 10.0f;
+  const float target_velocity = 500.0f * _PI / 30.0f;  // 500 RPM in rad/s
+
+  std::printf("current_mA,time_ms,advancement_mrad\n");
+
+  for (float direction : {1.0f, -1.0f}) {
+    for (int i = 1; i <= 10; ++i) {
+      float target_current = i * current_step * direction;
+
+      // Phase 1: Wait for wheel to stop spinning
+      motor->target = 0;
+      while (std::abs(motor->shaft_velocity) > 0.1f) {
+        osDelay(10);
+      }
+      osDelay(1000);  // Additional stabilization
+
+      // Phase 2: Start test
+      int sample_count = 0;
+      uint32_t start_ticks = HAL_GetTick();
+      motor->target = target_current;
+
+      while (sample_count < kMaxSamples) {
+        uint32_t now = HAL_GetTick();
+        float elapsed = (now - start_ticks) / 1000.0f;
+        float shaft_angle = motor->shaft_angle;
+
+        samples[sample_count++] = {elapsed, shaft_angle};
+
+        if (elapsed >= 1.0f || std::abs(motor->shaft_velocity) >= target_velocity) {
+          break;
+        }
+        osDelay(5);  // ~200Hz sampling
+      }
+
+      motor->target = 0;
+
+      // Phase 3: Print results (discard first 10 and last 10)
+      if (sample_count > 20) {
+        for (int s = 10; s < sample_count - 10; ++s) {
+          long current_mA = (long)(target_current * 1000.0f);
+          long time_ms = (long)(samples[s].time * 1000.0f);
+          float delta = samples[s].angle - samples[s - 1].angle;
+          // Handle wrap-around
+          if (delta > _PI) {
+            delta -= 2.0f * _PI;
+          } else if (delta < -_PI) {
+            delta += 2.0f * _PI;
+          }
+          long advancement_mrad = (long)(delta * 1000.0f);
+          std::printf("%ld,%ld,%ld\n", current_mA, time_ms, advancement_mrad);
+        }
+      }
+    }
+  }
+
+  while (true) {
+    osDelay(1000);
   }
 }
 
 void Loop() {
+  CharacterizeInertia();
   uint32_t start_time = HAL_GetTick();
   uint32_t last_print_time = 0;
   uint32_t last_dir_change = HAL_GetTick();
