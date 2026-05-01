@@ -284,6 +284,93 @@ void Setup() {
   NVIC_EnableIRQ(EXTI15_10_IRQn);
 }
 
+void LogMiscellaneousData() {
+  uint32_t mpu_error = 0;
+  if (g_mpu6050) {
+    mpu_error = g_mpu6050->ConsumeLastError();
+  }
+
+  if (motor) {
+    motor->monitor();
+  }
+  if (async_spi1) {
+    float angle = async_spi1->getAngle();
+    float mech = async_spi1->getMechanicalAngle();
+    float velocity = async_spi1->getVelocity();
+    const int32_t foc_nanos = foc_perf.ToNanos();
+    const int32_t int_nanos = int_perf.ToNanos();
+
+    std::printf(
+        "Angle: %d (mrad) Mech: %d (mrad) Velocity: %d (millrad/s) (raw: "
+        "%04x) "
+        "nFLT:%" PRIu32 " foc_nanos:%" PRId32 " int_nanos:%" PRId32 "\n",
+        static_cast<int>(angle * 1000), static_cast<int>(mech * 1000),
+        static_cast<int>(velocity * 1000), async_spi1->raw_angle,
+        LL_GPIO_IsInputPinSet(GPIOA, LL_GPIO_PIN_11), foc_nanos, int_nanos);
+
+#if 0
+        std::printf(
+            "  loopfoc [ns]: total:%d sensor:%d elec:%d torque:%d voltage:%d\n",
+            motor->perf_loopfoc.ToNanos(), motor->perf_sensor.ToNanos(),
+            motor->perf_elec_angle.ToNanos(), motor->perf_torque.ToNanos(),
+            motor->perf_set_voltage.ToNanos());
+
+        std::printf(
+            "  move [ns]: total:%d shaft:%d control:%d\n  last_move_us:%d\n",
+            motor->perf_move.ToNanos(), motor->perf_shaft.ToNanos(),
+            motor->perf_control.ToNanos(), motor->get_last_move_time_us());
+#endif
+  }
+  if (current_sense) {
+    auto currents = current_sense->getPhaseCurrents();
+    std::printf("Current [mA]: A:%d B:%d C:%d (Offsets: %dmV, %dmV)\n",
+                static_cast<int>(currents.a * 1000.0f),
+                static_cast<int>(currents.b * 1000.0f),
+                static_cast<int>(currents.c * 1000.0f),
+                static_cast<int>(current_sense->offset_ia * 1000.0f),
+                static_cast<int>(current_sense->offset_ib * 1000.0f));
+  }
+  if (g_mpu6050) {
+    float ax = 0, ay = 0, az = 0, gx = 0, gy = 0, gz = 0;
+    g_mpu6050->GetAccel(ax, ay, az);
+    g_mpu6050->GetGyro(gx, gy, gz);
+    std::printf(
+        "MPU6050: Accel[%d %d %d]mg Gyro[%d %d %d]md/s last_error: %u\n",
+        static_cast<int>(ax * 1000.0f), static_cast<int>(ay * 1000.0f),
+        static_cast<int>(az * 1000.0f), static_cast<int>(gx * 1000.0f),
+        static_cast<int>(gy * 1000.0f), static_cast<int>(gz * 1000.0f),
+        mpu_error);
+
+    float tilt = kalman_filter.getAngle();
+    float velocity = kalman_filter.getRate();
+
+    std::printf("Kalman: Tilt: %d (mdeg) Velocity: %d (mdeg/s)\n",
+                static_cast<int>(tilt * 1000.0f),
+                static_cast<int>(velocity * 1000.0f));
+  }
+}
+
+void UpdateKalmanFilter() {
+  float ax = 0, ay = 0, az = 0, gx = 0, gy = 0, gz = 0;
+  g_mpu6050->GetAccel(ax, ay, az);
+  g_mpu6050->GetGyro(gx, gy, gz);
+
+  // Kalman Filter Update
+  uint32_t now = HAL_GetTick();
+  if (last_kalman_tick == 0) last_kalman_tick = now;
+  float dt = (now - last_kalman_tick) / 1000.0f;
+  last_kalman_tick = now;
+
+  if (dt > 0) {
+    // X is downward (reports -1g when vertical), Y is right.
+    float accel_tilt = atan2f(ay, -ax) * 180.0f / _PI;
+    // Z is the axis of rotation.
+    float kalman_angle = kalman_filter.update(accel_tilt, gz, dt);
+    float kalman_velocity = kalman_filter.getRate();
+
+  }
+}
+
 void Loop() {
   uint32_t start_time = HAL_GetTick();
   uint32_t last_print_time = 0;
@@ -291,7 +378,10 @@ void Loop() {
   while (true) {
     // Wait for the MPU6050 data-ready event (set on DMA completion)
     // or timeout after 50ms to keep the loop alive for buttons/other tasks.
-    osEventFlagsWait(g_imu_event_flags, 0x01, osFlagsWaitAny, 50);
+    if (((Mpu6050::FLAG_DONE | Mpu6050::FLAG_ERROR) &
+         osEventFlagsWait(g_imu_event_flags, 0x01, osFlagsWaitAny, 50)) == 0) {
+      std::printf("Timed out waiting for MPU6050 interrupt!\n");
+    }
 
     // Check for button press (PC13 active-high) for immediate sleep
     if (LL_GPIO_IsInputPinSet(GPIOC, LL_GPIO_PIN_13)) {
@@ -308,80 +398,12 @@ void Loop() {
       last_dir_change = HAL_GetTick();
     }
 
-    float ax = 0, ay = 0, az = 0, gx = 0, gy = 0, gz = 0;
     if (g_mpu6050) {
-      g_mpu6050->GetAccel(ax, ay, az);
-      g_mpu6050->GetGyro(gx, gy, gz);
-
-      // Kalman Filter Update
-      uint32_t now = HAL_GetTick();
-      if (last_kalman_tick == 0) last_kalman_tick = now;
-      float dt = (now - last_kalman_tick) / 1000.0f;
-      last_kalman_tick = now;
-
-      if (dt > 0) {
-        // X is downward (reports -1g when vertical), Y is right.
-        float accel_tilt = atan2f(ay, -ax) * 180.0f / M_PI;
-        // Z is the axis of rotation.
-        kalman_filter.update(accel_tilt, gz, dt);
-      }
+      UpdateKalmanFilter();
     }
 
     if (HAL_GetTick() - last_print_time >= 1000) {
-      if (motor) {
-        motor->monitor();
-      }
-      if (async_spi1) {
-        float angle = async_spi1->getAngle();
-        float mech = async_spi1->getMechanicalAngle();
-        float velocity = async_spi1->getVelocity();
-        const int32_t foc_nanos = foc_perf.ToNanos();
-        const int32_t int_nanos = int_perf.ToNanos();
-
-        std::printf(
-            "Angle: %d (mrad) Mech: %d (mrad) Velocity: %d (millrad/s) (raw: "
-            "%04x) "
-            "nFLT:%" PRIu32 " foc_nanos:%" PRId32 " int_nanos:%" PRId32 "\n",
-            static_cast<int>(angle * 1000), static_cast<int>(mech * 1000),
-            static_cast<int>(velocity * 1000), async_spi1->raw_angle,
-            LL_GPIO_IsInputPinSet(GPIOA, LL_GPIO_PIN_11), foc_nanos, int_nanos);
-
-#if 0
-        std::printf(
-            "  loopfoc [ns]: total:%d sensor:%d elec:%d torque:%d voltage:%d\n",
-            motor->perf_loopfoc.ToNanos(), motor->perf_sensor.ToNanos(),
-            motor->perf_elec_angle.ToNanos(), motor->perf_torque.ToNanos(),
-            motor->perf_set_voltage.ToNanos());
-
-        std::printf(
-            "  move [ns]: total:%d shaft:%d control:%d\n  last_move_us:%d\n",
-            motor->perf_move.ToNanos(), motor->perf_shaft.ToNanos(),
-            motor->perf_control.ToNanos(), motor->get_last_move_time_us());
-#endif
-      }
-      if (current_sense) {
-        auto currents = current_sense->getPhaseCurrents();
-        std::printf("Current [mA]: A:%d B:%d C:%d (Offsets: %dmV, %dmV)\n",
-                    static_cast<int>(currents.a * 1000.0f),
-                    static_cast<int>(currents.b * 1000.0f),
-                    static_cast<int>(currents.c * 1000.0f),
-                    static_cast<int>(current_sense->offset_ia * 1000.0f),
-                    static_cast<int>(current_sense->offset_ib * 1000.0f));
-      }
-      if (g_mpu6050) {
-        std::printf(
-            "MPU6050: Accel[%d %d %d]mg Gyro[%d %d %d]md/s\n",
-            static_cast<int>(ax * 1000.0f), static_cast<int>(ay * 1000.0f),
-            static_cast<int>(az * 1000.0f), static_cast<int>(gx * 1000.0f),
-            static_cast<int>(gy * 1000.0f), static_cast<int>(gz * 1000.0f));
-
-        float tilt = kalman_filter.getAngle();
-        float velocity = kalman_filter.getRate();
-
-        std::printf("Kalman: Tilt: %d (mdeg) Velocity: %d (mdeg/s)\n",
-                    static_cast<int>(tilt * 1000.0f),
-                    static_cast<int>(velocity * 1000.0f));
-      }
+      // LogMiscellaneousData();
       last_print_time = HAL_GetTick();
     }
   }
