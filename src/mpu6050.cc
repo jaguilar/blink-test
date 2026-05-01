@@ -178,8 +178,7 @@ void Mpu6050::OnTransferComplete() {
 }
 
 void Mpu6050::OnTransferError() {
-  uint32_t error_code = HAL_I2C_GetError(hi2c_);
-  std::printf("MPU6050: OnTransferError, ErrorCode = 0x%08lX\n", error_code);
+  last_error_ = HAL_I2C_GetError(hi2c_);
   is_background_reading_ = false;
   osEventFlagsSet(event_flags_, FLAG_ERROR);
 }

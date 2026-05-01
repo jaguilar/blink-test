@@ -33,6 +33,9 @@ class Mpu6050 {
 
   static constexpr uint8_t I2C_ADDR = 0x68 << 1;  // HAL uses left-shifted address
 
+  static constexpr uint32_t FLAG_DONE = 0x01;
+  static constexpr uint32_t FLAG_ERROR = 0x02;
+
   explicit Mpu6050(I2C_HandleTypeDef* hi2c,
                    osEventFlagsId_t external_event_flags = nullptr,
                    uint32_t external_event_bit = 0);
@@ -55,19 +58,23 @@ class Mpu6050 {
   void OnTransferComplete();
   void OnTransferError();
 
+  uint32_t ConsumeLastError() {
+    uint32_t err = last_error_;
+    last_error_ = 0;
+    return err;
+  }
+
  private:
   I2C_HandleTypeDef* hi2c_;
   osEventFlagsId_t event_flags_;
   osEventFlagsId_t external_event_flags_;
   uint32_t external_event_bit_;
 
-  static constexpr uint32_t FLAG_DONE = 0x01;
-  static constexpr uint32_t FLAG_ERROR = 0x02;
-
   bool is_background_reading_;
   uint8_t dma_buffer_[14];
   float ax_, ay_, az_;
   float gx_, gy_, gz_;
+  uint32_t last_error_ = 0;
 
   void ParseDmaBuffer();
   bool WaitForTransfer(uint32_t timeout_ms = 100);
