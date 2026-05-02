@@ -101,7 +101,14 @@ def main():
         sys.exit(1)
 
     command = sys.argv[1]
-    elf = "build/tests/blink-tests.elf" # Default
+    
+    # Try to get ELF from environment, then via Bazel, then fallback to hardcoded path
+    elf = os.getenv("ELF_FILE")
+    if not elf:
+        from debug_tools import get_bazel_artifact_path
+        elf = get_bazel_artifact_path("blink-test")
+    if not elf:
+        elf = "bazel-bin/blink-test"
     
     tools = get_toolchain()
     gdb_path = os.getenv('GDB_PATH', tools['gdb'])

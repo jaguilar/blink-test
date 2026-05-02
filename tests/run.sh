@@ -17,12 +17,12 @@ if [ -f local.env ]; then
     set +a
 fi
 
-BUILD_DIR="${BUILD_DIR:-build}"
+BUILD_DIR="${BUILD_DIR:-bazel-bin}"
 TARGET="blink-tests"
 UART_DEV="${UART_PORT:-/dev/ttyUSB0}"
 
 show_help() {
-    echo "Usage: $0 [options] [cmake_args...]"
+    echo "Usage: $0 [options] [bazel_args...]"
     echo "Options:"
     echo "  --hil        Build, reset device, and start UART monitor (default)"
     echo "  --target T   Set the test binary target (default: blink-tests)"
@@ -31,13 +31,13 @@ show_help() {
     echo "  --monitor    Start UART monitor only (no build/flash)"
     echo "  -h, --help   Show this help"
     echo ""
-    echo "Note: Extra arguments are forwarded to CMake configuration."
-    echo "Example: $0 --hil -DCMAKE_BUILD_TYPE=Debug"
+    echo "Note: Extra arguments are forwarded to Bazel build."
+    echo "Example: $0 --hil -c dbg"
 }
 
 # --- Argument Parsing ---
 MODE="hil"
-CMAKE_ARGS=()
+BAZEL_ARGS=()
 TIMEOUT=10
 
 while [[ $# -gt 0 ]]; do
@@ -49,22 +49,16 @@ while [[ $# -gt 0 ]]; do
         --monitor) MODE="monitor"; shift ;;
         --timeout) TIMEOUT="$2"; shift 2 ;;
         -h|--help) show_help; exit 0 ;;
-        *)         CMAKE_ARGS+=("$1"); shift ;;
+        *)         BAZEL_ARGS+=("$1"); shift ;;
     esac
 done
 
-ELF_FILE="$BUILD_DIR/tests/$TARGET.elf"
+ELF_FILE="$BUILD_DIR/tests/$TARGET"
 
 # --- 1. Build Phase ---
 if [[ "$MODE" != "monitor" ]]; then
-    echo -e "${BLUE}=== Configuring blink-tests ===${NC}"
-    cmake -G Ninja -B "$BUILD_DIR" -S . \
-        -DBUILD_TESTING=ON \
-        -DCMAKE_TOOLCHAIN_FILE=cmake/gcc-arm-none-eabi.cmake \
-        "${CMAKE_ARGS[@]}"
-
-    echo -e "${BLUE}=== Building $TARGET ===${NC}"
-    cmake --build "$BUILD_DIR" --target "$TARGET"
+    echo -e "${BLUE}=== Building $TARGET via Bazel ===${NC}"
+    bazel build //tests:"$TARGET" "${BAZEL_ARGS[@]}"
 fi
 
 # --- 2. Hardware Phase ---

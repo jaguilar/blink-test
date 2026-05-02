@@ -10,6 +10,36 @@ def get_toolchain():
         "target": "target/stm32g4x.cfg"
     }
 
+def get_bazel_artifact_path(target):
+    """Query Bazel for the output path of a target."""
+    try:
+        # If it's just a name, assume it's in the root
+        if not target.startswith("//") and not target.startswith(":"):
+            target = f"//:{target}"
+            
+        # Use cquery to find the output file for the target
+        result = subprocess.check_output(
+            ["bazel", "cquery", "--output=files", target],
+            stderr=subprocess.DEVNULL,
+            text=True
+        ).strip()
+        
+        if not result:
+            return None
+            
+        # If there are multiple files, take the first one
+        path = result.split('\n')[0]
+        
+        # Return absolute path if possible, otherwise relative to current dir
+        if os.path.exists(path):
+            return os.path.abspath(path)
+            
+        # Fallback to searching in bazel-bin if cquery gives something weird
+        # or if we are not at the root
+        return path
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        return None
+
 def start_gdb_server(port=3333):
     tools = get_toolchain()
     

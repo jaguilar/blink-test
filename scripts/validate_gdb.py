@@ -7,7 +7,12 @@ from debug_tools import get_toolchain
 from gdb_agent import GDBAgent
 
 def validate_gdb():
-    elf = "build/tests/blink-tests.elf"
+    # Try to get ELF from environment, then via Bazel, then fallback to hardcoded path
+    elf = os.environ.get("ELF_FILE")
+    if not elf:
+        elf = get_bazel_artifact_path("//tests:blink-tests")
+    if not elf:
+        elf = "bazel-bin/tests/blink-tests"
     tools = get_toolchain()
     
     if not tools['gdb']:
