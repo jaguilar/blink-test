@@ -5,16 +5,19 @@ package(default_visibility = ["//visibility:public"])
 
 filegroup(name = "empty")
 
-cc_toolchain_config(name = "arm_none_eabi_toolchain_config")
+cc_toolchain_config(
+    name = "arm_none_eabi_toolchain_config",
+    linker_script = "//:STM32G474XX_FLASH.ld",
+)
 
 cc_toolchain(
     name = "arm_none_eabi_cc_toolchain",
     toolchain_identifier = "arm-none-eabi-toolchain",
     toolchain_config = ":arm_none_eabi_toolchain_config",
-    all_files = ":empty",
+    all_files = "//:STM32G474XX_FLASH.ld",
     compiler_files = ":empty",
     dwp_files = ":empty",
-    linker_files = ":empty",
+    linker_files = "//:STM32G474XX_FLASH.ld",
     objcopy_files = ":empty",
     strip_files = ":empty",
     supports_param_files = 0,

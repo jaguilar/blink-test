@@ -2,6 +2,8 @@ load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_library")
 
 package(default_visibility = ["//visibility:public"])
 
+exports_files(["STM32G474XX_FLASH.ld"])
+
 cc_library(
     name = "stm32cubemx_headers",
     hdrs = glob([
@@ -169,13 +171,6 @@ cc_binary(
     deps = [
         ":blink_test_lib",
     ],
-    linkopts = [
-        "-T",
-        "$(location //:STM32G474XX_FLASH.ld)",
-    ],
-    additional_linker_inputs = [
-        "//:STM32G474XX_FLASH.ld",
-    ],
 )
 
 load("@hedron_compile_commands//:refresh_compile_commands.bzl", "refresh_compile_commands")
@@ -183,6 +178,7 @@ load("@hedron_compile_commands//:refresh_compile_commands.bzl", "refresh_compile
 refresh_compile_commands(
     name = "refresh_compile_commands",
     targets = {
-        "//...": "",
+        "//:blink-test": "",
+        "//tests/...": "",
     },
 )

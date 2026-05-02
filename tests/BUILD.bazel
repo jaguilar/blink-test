@@ -12,14 +12,6 @@ cc_binary(
         "@cpputest//:cpputest",
         "@cpputest//:cpputest_ext",
     ],
-    linkopts = [
-        "--specs=nosys.specs",
-        "-u", "_printf_float",
-        "-T", "$(location //:STM32G474XX_FLASH.ld)",
-    ],
-    additional_linker_inputs = [
-        "//:STM32G474XX_FLASH.ld",
-    ],
 )
 
 cc_binary(
@@ -32,14 +24,6 @@ cc_binary(
         "//:blink_test_common_lib",
         "@cpputest//:cpputest",
         "@cpputest//:cpputest_ext",
-    ],
-    linkopts = [
-        "--specs=nosys.specs",
-        "-u", "_printf_float",
-        "-T", "$(location //:STM32G474XX_FLASH.ld)",
-    ],
-    additional_linker_inputs = [
-        "//:STM32G474XX_FLASH.ld",
     ],
 )
 
@@ -54,14 +38,6 @@ cc_binary(
         "@cpputest//:cpputest",
         "@cpputest//:cpputest_ext",
     ],
-    linkopts = [
-        "--specs=nosys.specs",
-        "-u", "_printf_float",
-        "-T", "$(location //:STM32G474XX_FLASH.ld)",
-    ],
-    additional_linker_inputs = [
-        "//:STM32G474XX_FLASH.ld",
-    ],
 )
 
 cc_binary(
@@ -75,14 +51,6 @@ cc_binary(
         "@cpputest//:cpputest",
         "@cpputest//:cpputest_ext",
     ],
-    linkopts = [
-        "--specs=nosys.specs",
-        "-u", "_printf_float",
-        "-T", "$(location //:STM32G474XX_FLASH.ld)",
-    ],
-    additional_linker_inputs = [
-        "//:STM32G474XX_FLASH.ld",
-    ],
 )
 
 cc_binary(
@@ -95,13 +63,5 @@ cc_binary(
         "//:blink_test_common_lib",
         "@cpputest//:cpputest",
         "@cpputest//:cpputest_ext",
-    ],
-    linkopts = [
-        "--specs=nosys.specs",
-        "-u", "_printf_float",
-        "-T", "$(location //:STM32G474XX_FLASH.ld)",
-    ],
-    additional_linker_inputs = [
-        "//:STM32G474XX_FLASH.ld",
     ],
 )

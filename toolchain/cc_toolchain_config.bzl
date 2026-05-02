@@ -40,6 +40,8 @@ def _impl(ctx):
         "-mfpu=fpv4-sp-d16",
         "-mfloat-abi=hard",
         "--specs=nano.specs",
+        "-u",
+        "_printf_float",
         "-Wl,-Map=blink-test.map",
         "-Wl,--cref",
         "-Wl,--gc-sections",
@@ -48,6 +50,9 @@ def _impl(ctx):
         "-lm",
         "-lstdc++",
     ]
+
+    if ctx.file.linker_script:
+        linker_flags.extend(["-T", ctx.file.linker_script.path])
 
     features = [
         feature(
@@ -102,5 +107,8 @@ def _impl(ctx):
 
 cc_toolchain_config = rule(
     implementation = _impl,
-    attrs = {},
+    attrs = {
+        "linker_script": attr.label(allow_single_file = True),
+    },
+    provides = [CcToolchainConfigInfo],
 )
