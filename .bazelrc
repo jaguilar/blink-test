@@ -1,0 +1,9 @@
+# Set the default platform for builds
+build --platforms=//platforms:stm32g4
+
+# Common build flags
+build --cxxopt=-std=c++20
+build --copt=-std=c11
+
+# Enable detailed error messages for toolchain resolution if needed
+# build --toolchain_resolution_debug

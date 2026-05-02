@@ -6,3 +6,5 @@ build
 __pycache__
 
 local.env
+
+bazel-*/

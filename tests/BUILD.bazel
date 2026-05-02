@@ -1,0 +1,107 @@
+load("@rules_cc//cc:defs.bzl", "cc_binary")
+
+cc_binary(
+    name = "blink-tests",
+    srcs = [
+        "main_test.cc",
+        "test_dummy.cc",
+        "test_timers.cc",
+    ],
+    deps = [
+        "//:blink_test_common_lib",
+        "@cpputest//:cpputest",
+        "@cpputest//:cpputest_ext",
+    ],
+    linkopts = [
+        "--specs=nosys.specs",
+        "-u", "_printf_float",
+        "-T", "$(location //:STM32G474XX_FLASH.ld)",
+    ],
+    additional_linker_inputs = [
+        "//:STM32G474XX_FLASH.ld",
+    ],
+)
+
+cc_binary(
+    name = "spi-sensor-test",
+    srcs = [
+        "main_test.cc",
+        "test_spi_sensor.cc",
+    ],
+    deps = [
+        "//:blink_test_common_lib",
+        "@cpputest//:cpputest",
+        "@cpputest//:cpputest_ext",
+    ],
+    linkopts = [
+        "--specs=nosys.specs",
+        "-u", "_printf_float",
+        "-T", "$(location //:STM32G474XX_FLASH.ld)",
+    ],
+    additional_linker_inputs = [
+        "//:STM32G474XX_FLASH.ld",
+    ],
+)
+
+cc_binary(
+    name = "adc-current-sense-test",
+    srcs = [
+        "main_test.cc",
+        "test_adc_current_sense.cc",
+    ],
+    deps = [
+        "//:blink_test_common_lib",
+        "@cpputest//:cpputest",
+        "@cpputest//:cpputest_ext",
+    ],
+    linkopts = [
+        "--specs=nosys.specs",
+        "-u", "_printf_float",
+        "-T", "$(location //:STM32G474XX_FLASH.ld)",
+    ],
+    additional_linker_inputs = [
+        "//:STM32G474XX_FLASH.ld",
+    ],
+)
+
+cc_binary(
+    name = "mpu6050-test",
+    srcs = [
+        "main_test.cc",
+        "test_mpu6050.cc",
+    ],
+    deps = [
+        "//:blink_test_common_lib",
+        "@cpputest//:cpputest",
+        "@cpputest//:cpputest_ext",
+    ],
+    linkopts = [
+        "--specs=nosys.specs",
+        "-u", "_printf_float",
+        "-T", "$(location //:STM32G474XX_FLASH.ld)",
+    ],
+    additional_linker_inputs = [
+        "//:STM32G474XX_FLASH.ld",
+    ],
+)
+
+cc_binary(
+    name = "kalman-filter-test",
+    srcs = [
+        "main_test.cc",
+        "test_kalman_filter.cc",
+    ],
+    deps = [
+        "//:blink_test_common_lib",
+        "@cpputest//:cpputest",
+        "@cpputest//:cpputest_ext",
+    ],
+    linkopts = [
+        "--specs=nosys.specs",
+        "-u", "_printf_float",
+        "-T", "$(location //:STM32G474XX_FLASH.ld)",
+    ],
+    additional_linker_inputs = [
+        "//:STM32G474XX_FLASH.ld",
+    ],
+)

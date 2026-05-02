@@ -1,5 +1,6 @@
 #include <unistd.h>
 #include <wchar.h>
+#include <sys/time.h>
 
 #include <cstdio>
 #include <span>

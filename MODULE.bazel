@@ -1,0 +1,79 @@
+module(
+    name = "blink_test",
+    version = "0.1",
+)
+
+bazel_dep(name = "rules_cc", version = "0.0.17")
+bazel_dep(name = "rules_foreign_cc", version = "0.13.0")
+bazel_dep(name = "platforms", version = "0.0.10")
+
+register_toolchains("//toolchain:arm_none_eabi_toolchain")
+
+http_archive = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
+
+http_archive(
+    name = "eigen",
+    build_file_content = """
+load("@rules_cc//cc:defs.bzl", "cc_library")
+cc_library(
+    name = "eigen",
+    hdrs = glob(["Eigen/**", "unsupported/Eigen/**"]),
+    includes = ["."],
+    visibility = ["//visibility:public"],
+)
+""",
+    strip_prefix = "eigen-3.4.0",
+    urls = ["https://gitlab.com/libeigen/eigen/-/archive/3.4.0/eigen-3.4.0.tar.gz"],
+)
+
+http_archive(
+    name = "cpputest",
+    build_file_content = """
+load("@rules_cc//cc:defs.bzl", "cc_library")
+cc_library(
+    name = "cpputest",
+    srcs = glob(["src/CppUTest/*.cpp", "src/Platforms/Gcc/*.cpp"]),
+    hdrs = glob(["include/CppUTest/*.h", "include/CppUTest/*"]),
+    includes = ["include"],
+    defines = [
+        "CPPUTEST_MEM_LEAK_DETECTION_DISABLED",
+        "CPPUTEST_HAVE_EXCEPTIONS=0",
+    ],
+    copts = ["-fexceptions"],
+    visibility = ["//visibility:public"],
+)
+
+cc_library(
+    name = "cpputest_ext",
+    srcs = glob(["src/CppUTestExt/*.cpp"]),
+    hdrs = glob(["include/CppUTestExt/*.h"]),
+    includes = ["include"],
+    deps = [":cpputest"],
+    copts = ["-fexceptions"],
+    visibility = ["//visibility:public"],
+)
+""",
+    strip_prefix = "cpputest-4.0",
+    urls = ["https://github.com/cpputest/cpputest/archive/v4.0.tar.gz"],
+)
+
+# Local repositories
+new_local_repository = use_repo_rule("@bazel_tools//tools/build_defs/repo:local.bzl", "new_local_repository")
+
+new_local_repository(
+    name = "arduino_foc",
+    path = "lib/Arduino-FOC",
+    build_file = "//third_party:arduino_foc.BUILD",
+)
+
+new_local_repository(
+    name = "lwrb",
+    path = "lib/lwrb",
+    build_file = "//third_party:lwrb.BUILD",
+)
+
+new_local_repository(
+    name = "stm32_arduino_shim",
+    path = "lib/stm32_arduino_shim",
+    build_file = "//third_party:stm32_arduino_shim.BUILD",
+)
