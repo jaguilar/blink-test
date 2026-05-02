@@ -8,3 +8,5 @@ __pycache__
 local.env
 
 bazel-*/
+
+compile_commands.json
