@@ -44,13 +44,40 @@ constexpr float kMotorTarget = 0.6f;
 constexpr MotionControlType kMotionController = MotionControlType::torque;
 constexpr TorqueControlType kTorqueController = TorqueControlType::foc_current;
 constexpr float kCurrentLimit = 8.f;
-constexpr float kVoltageLimit = .8f;
+constexpr float kVoltageLimit = 2.8f;
 constexpr float kPowerSupplyVoltage = 8.0f;
-constexpr float kInitFocVoltage = 0.6f;
+constexpr float kInitFocVoltage = 0.4f;
 
 // Hardware Pin Configuration
 constexpr GpioEntry kDrvEnPin = GPIO_ENTRY(M1_EN_GPIO_Port, M1_EN_Pin, true);
 constexpr GpioEntry kDrvCalPin = GPIO_ENTRY(M1_CAL_GPIO_Port, M1_CAL_Pin, true);
+
+// LQR Controller Parameters
+// u = K1*theta + K2*theta_dot + K3*omega_w
+// These gains are derived from scripts/compute_lqr_gains.py
+// They are intended to be used directly: u = kK1*theta + kK2*theta_dot +
+// kK3*omega_w Note: The script returned K such that u = -Kx, where K was
+// negative. So u = -(-|K1|*theta) = +|K1|*theta. But we need negative feedback
+// (u should oppose theta). Given "positive current -> positive tilt", we want u
+// = -|K1|*theta.
+constexpr float lqr_mat[4] = {-120.8937f, -4.5951f, -0.0058f, 0.1051f};
+constexpr float kK1 = lqr_mat[0];
+constexpr float kK2 = lqr_mat[1];
+constexpr float kK3 = lqr_mat[2];
+constexpr float kK4 = lqr_mat[3];
+
+// Safety Thresholds
+constexpr float kMaxAngleDeg = 10.0f;
+constexpr float kMaxWheelRpm = 1000.0f;
+constexpr float kMaxWheelRadS = kMaxWheelRpm * 2.0f * _PI / 60.0f;
+constexpr float kStandAngleDeg = 3.0f;
+constexpr uint32_t kStandStillTimeMs = 2000;
+
+enum class ControlState { DISABLED, WAITING_FOR_STAND, ENABLED };
+
+static ControlState g_control_state = ControlState::WAITING_FOR_STAND;
+static uint32_t g_stand_still_start_ms = 0;
+static float g_int_wheel_velocity = 0;
 
 PerfCounter foc_perf;
 PerfCounter int_perf;
@@ -350,7 +377,9 @@ void LogMiscellaneousData() {
   }
 }
 
-void UpdateKalmanFilter() {
+void UpdateControlLoop() {
+  if (!g_mpu6050 || !motor || !async_spi1) return;
+
   float ax = 0, ay = 0, az = 0, gx = 0, gy = 0, gz = 0;
   g_mpu6050->GetAccel(ax, ay, az);
   g_mpu6050->GetGyro(gx, gy, gz);
@@ -361,20 +390,80 @@ void UpdateKalmanFilter() {
   float dt = (now - last_kalman_tick) / 1000.0f;
   last_kalman_tick = now;
 
-  if (dt > 0) {
-    // X is downward (reports -1g when vertical), Y is right.
-    float accel_tilt = atan2f(ay, -ax) * 180.0f / _PI;
-    // Z is the axis of rotation.
-    float kalman_angle = kalman_filter.update(accel_tilt, gz, dt);
-    float kalman_velocity = kalman_filter.getRate();
+  if (dt <= 0) return;
 
+  // X is downward (reports -1g when vertical), Y is right.
+  float accel_tilt_deg = atan2f(ay, -ax) * 180.0f / M_PI;
+  // Z is the axis of rotation.
+  float tilt_deg = kalman_filter.update(accel_tilt_deg, gz, dt);
+  float tilt_rate_deg_s = kalman_filter.getRate();
+
+  float wheel_velocity_rad_s = async_spi1->getVelocity();
+
+  // Safety Checks
+  bool angle_out_of_range = std::abs(tilt_deg) > kMaxAngleDeg;
+  bool wheel_speed_too_high = std::abs(wheel_velocity_rad_s) > kMaxWheelRadS;
+
+  if (g_control_state == ControlState::ENABLED) {
+    if (angle_out_of_range || wheel_speed_too_high) {
+      g_control_state = ControlState::WAITING_FOR_STAND;
+      motor->target = 0;
+      g_int_wheel_velocity = 0;
+      std::printf(
+          "Controller DISABLED: %s%s (Angle: %d mrad, Speed: %d mrad/s)\n",
+          angle_out_of_range ? "Angle out of range " : "",
+          wheel_speed_too_high ? "Wheel speed too high" : "",
+          static_cast<int>(tilt_deg * 1000.0f),
+          static_cast<int>(wheel_velocity_rad_s * 1000.0f));
+    } else {
+      // Update integrator
+      g_int_wheel_velocity += wheel_velocity_rad_s * dt;
+      // Anti-windup (cap at value that could produce 10A of current)
+      g_int_wheel_velocity =
+          _constrain(g_int_wheel_velocity, -2000.0f, 2000.0f);
+
+      // LQR Control Law: u = K1*theta + K2*theta_dot + K3*omega_w +
+      // K4*int_omega_w Convert state to radians/SI units
+      float theta_rad = tilt_deg * _PI / 180.0f;
+      float theta_dot_rad_s = tilt_rate_deg_s * _PI / 180.0f;
+
+      auto u1 = kK1 * theta_rad;
+      auto u2 = kK2 * theta_dot_rad_s;
+      auto u3 = kK3 * wheel_velocity_rad_s;
+      auto u4 = kK4 * g_int_wheel_velocity;
+
+      float u = u1 + u2 + u3 + u4;
+
+      // Apply current limit
+      u = _constrain(u, -kCurrentLimit, kCurrentLimit);
+      motor->target = u;
+      std::printf(
+          "%d (theta) + %d (theta_dot) + %d (wheel_vel) + %d (wheel_vel_int)= "
+          "%d\n",
+          static_cast<int>(u1 * 1000.0f), static_cast<int>(u2 * 1000.0f),
+          static_cast<int>(u3 * 1000.0f), static_cast<int>(u4 * 1000.0f),
+          static_cast<int>(u * 1000.0f));
+    }
+  } else if (g_control_state == ControlState::WAITING_FOR_STAND) {
+    motor->target = 0;
+    if (std::abs(tilt_deg) < kStandAngleDeg) {
+      if (g_stand_still_start_ms == 0) {
+        g_stand_still_start_ms = now;
+      } else if (now - g_stand_still_start_ms > kStandStillTimeMs) {
+        g_control_state = ControlState::ENABLED;
+        g_stand_still_start_ms = 0;
+        g_int_wheel_velocity = 0;
+        std::printf("Controller ENABLED: Standing detected.\n");
+      }
+    } else {
+      g_stand_still_start_ms = 0;
+    }
   }
 }
 
 void Loop() {
   uint32_t start_time = HAL_GetTick();
   uint32_t last_print_time = 0;
-  uint32_t last_dir_change = HAL_GetTick();
   while (true) {
     // Wait for the MPU6050 data-ready event (set on DMA completion)
     // or timeout after 50ms to keep the loop alive for buttons/other tasks.
@@ -393,17 +482,19 @@ void Loop() {
       start_time = HAL_GetTick();
     }
 
-    if (HAL_GetTick() - last_dir_change > 5000) {
-      motor->target = -motor->target;
-      last_dir_change = HAL_GetTick();
-    }
-
     if (g_mpu6050) {
-      UpdateKalmanFilter();
+      UpdateControlLoop();
     }
 
-    if (HAL_GetTick() - last_print_time >= 1000) {
-      // LogMiscellaneousData();
+    if (HAL_GetTick() - last_print_time >= 250) {
+      LogMiscellaneousData();
+      std::printf("State: %s Target: %d mA IntWheel: %d rad\n",
+                  g_control_state == ControlState::ENABLED ? "ENABLED"
+                  : g_control_state == ControlState::WAITING_FOR_STAND
+                      ? "WAITING"
+                      : "DISABLED",
+                  static_cast<int>(1000.f * motor->target),
+                  static_cast<int>(g_int_wheel_velocity));
       last_print_time = HAL_GetTick();
     }
   }

@@ -43,21 +43,30 @@ def main():
         [Kt * Ip / (Iw * I_frame)]
     ])
     
-    print("\nSystem Matrices:")
-    print("A:\n", A)
-    print("B:\n", B)
+    # Augmented state: [theta, theta_dot, omega_w, int_omega_w]
+    A_aug = np.zeros((4, 4))
+    A_aug[0:3, 0:3] = A
+    A_aug[3, 2] = 1.0  # d/dt (int_omega_w) = omega_w
+    
+    B_aug = np.zeros((4, 1))
+    B_aug[0:3, 0] = B.flatten()
+    
+    print("\nAugmented System Matrices:")
+    print("A_aug:\n", A_aug)
+    print("B_aug:\n", B_aug)
     
     # LQR Weights
     # Q: State cost
-    # [theta, theta_dot, omega_w]
+    # [theta, theta_dot, omega_w, int_omega_w]
     Q = np.diag([
-        1000.0,  # Penalty for tilt error
-        10.0,    # Penalty for angular velocity
-        0.01     # Penalty for wheel velocity
+        4000.0,  # Penalty for tilt error
+        20.0,    # Penalty for angular velocity
+        0.0,   # Penalty for wheel velocity
+        0.0001   # Penalty for integrated wheel velocity (bias rejection)
     ])
     
     # R: Input cost (current in Amps)
-    R = np.array([[1.0]])
+    R = np.array([[.5]])
     
     print("\nLQR Weights:")
     print("Q:\n", Q)
@@ -65,10 +74,10 @@ def main():
     
     # Compute LQR Gains
     # Note: control.lqr returns K such that u = -Kx
-    K, S, E = control.lqr(A, B, Q, R)
+    K, S, E = control.lqr(A_aug, B_aug, Q, R)
     
     print("\nComputed LQR Gains (K):")
-    print(K)
+    print(f'{K[0, 0]:.4f}f, {K[0, 1]:.4f}f, {K[0, 2]:.4f}f, {K[0, 3]:.4f}f')
     
     print("\nClosed-loop Eigenvalues:")
     for e in E:
