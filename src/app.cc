@@ -40,48 +40,40 @@ using namespace stfoc;
 
 extern UART_HandleTypeDef hlpuart1;
 
-// Motor Configuration Constants
-constexpr float kMotorTarget = 0.6f;
-constexpr MotionControlType kMotionController = MotionControlType::torque;
-constexpr TorqueControlType kTorqueController = TorqueControlType::foc_current;
-constexpr float kCurrentLimit = 8.f;
-constexpr float kVoltageLimit = 2.8f;
-constexpr float kPowerSupplyVoltage = 8.0f;
-constexpr float kInitFocVoltage = 0.4f;
-
-// Hardware Pin Configuration
-constexpr GpioEntry kDrvEnPin = GPIO_ENTRY(M1_EN_GPIO_Port, M1_EN_Pin, true);
-constexpr GpioEntry kDrvCalPin = GPIO_ENTRY(M1_CAL_GPIO_Port, M1_CAL_Pin, true);
-
-// LQR Controller Parameters
-// u = -(K1*theta + K2*theta_dot + K3*omega_w)
-// These gains are derived from scripts/compute_lqr_gains.py
-constexpr float lqr_mat[3] = {-24.7990f, -2.7801f, -0.0411f};
-constexpr float kK1 = lqr_mat[0];
-constexpr float kK2 = lqr_mat[1];
-constexpr float kK3 = lqr_mat[2];
+// --- Tunable Parameters ---
 
 // Safety Thresholds
 constexpr float kMaxAngleDeg = 10.0f;
-constexpr float kMaxAngleRad = kMaxAngleDeg * _PI / 180.0f;
 constexpr float kMaxWheelRpm = 1000.0f;
-constexpr float kMaxWheelRadS = kMaxWheelRpm * 2.0f * _PI / 60.0f;
 constexpr float kStandAngleDeg = 3.0f;
-constexpr float kStandAngleRad = kStandAngleDeg * _PI / 180.0f;
 constexpr uint32_t kStandStillTimeMs = 2000;
+
+// LQR Controller Gains
+// These gains are derived from scripts/compute_lqr_gains.py
+// u = -(K1*theta + K2*theta_dot + K3*omega_w)
+constexpr float kLqrGainsK[3] = {-24.7990f, -2.7801f, -0.0411f};
+
+// Trim and Filtering
+constexpr float kTrimAlpha = 0.001f;
+
+// Motor variables and limits.
+constexpr float kPowerSupplyVoltage = 8.0f;
+constexpr float kCurrentLimit = 8.f;
+
+// --- Internal Configuration ---
 
 enum class ControlState { DISABLED, WAITING_FOR_STAND, ENABLED };
 
 static ControlState g_control_state = ControlState::WAITING_FOR_STAND;
 static uint32_t g_stand_still_start_ms = 0;
 static float g_tilt_filter = 0.0f;
-static float g_last_tilt_rad = 0.028f;
-static int g_stuck_counter = 0;
-constexpr float kTrimAlpha = 0.001f;
 
 PerfCounter foc_perf;
 PerfCounter int_perf;
-bool is_sleeping = false;
+
+// Hardware Pin Configuration
+constexpr GpioEntry kDrvEnPin = GPIO_ENTRY(M1_EN_GPIO_Port, M1_EN_Pin, true);
+constexpr GpioEntry kDrvCalPin = GPIO_ENTRY(M1_CAL_GPIO_Port, M1_CAL_Pin, true);
 
 void EnsureCycleCounterEnabled() {
   CoreDebug->DEMCR |= CoreDebug_DEMCR_TRCENA_Msk;
@@ -149,26 +141,6 @@ static KalmanFilter kalman_filter;
 static uint32_t last_kalman_tick = 0;
 
 extern "C" {
-
-void EnterSleepMode() {
-  std::printf("Entering standby mode. PC13 press will wake/reset.\n");
-  is_sleeping = true;
-  LL_GPIO_ResetOutputPin(GPIOC, LL_GPIO_PIN_6);
-  if (motor) {
-    motor->disable();
-  }
-
-  // Clear wakeup flags
-  __HAL_PWR_CLEAR_FLAG(PWR_FLAG_WUF2);
-
-  // Enable wakeup pin 2 (PC13) - active high
-  HAL_PWR_EnableWakeUpPin(PWR_WAKEUP_PIN2_HIGH);
-
-  // Enter Standby mode. This performs a full reset on wakeup.
-  HAL_PWR_EnterSTANDBYMode();
-
-  // Code should not reach here after standby unless entry failed
-}
 
 void InitMpu6050() {
   std::printf("[Setup] Initializing MPU6050 via DMA...\n");
@@ -239,14 +211,15 @@ void Setup() {
   osDelay(10);
 
   std::printf("[Setup] Configuring Motor...\n");
+  constexpr float kVoltageLimit = 2.8f;
   motor->voltage_limit =
       std::min(kVoltageLimit, 0.5f * motor1_driver->voltage_limit);
   motor->current_limit = kCurrentLimit;
-  motor->controller = kMotionController;
-  motor->torque_controller = kTorqueController;
-  motor->target = kMotorTarget;
-  motor->voltage_sensor_align = kInitFocVoltage;
-  motor->zero_electric_angle = 0.58;  // Experimentally verified.
+  motor->controller = MotionControlType::torque;
+  motor->torque_controller = TorqueControlType::foc_current;
+  motor->target = 0.6f;                // kMotorTarget
+  motor->voltage_sensor_align = 0.4f;  // kInitFocVoltage
+  motor->zero_electric_angle = 0.58;   // Experimentally verified.
   motor->motion_downsample = 20;
   {
     // Manually set the time intervals to save us the cost of calculating them.
@@ -409,6 +382,9 @@ void UpdateControlLoop() {
   float wheel_velocity_rad_s = -async_spi1->getVelocity();
 
   // Safety Checks
+  constexpr float kMaxAngleRad = kMaxAngleDeg * _PI / 180.0f;
+  constexpr float kMaxWheelRadS = kMaxWheelRpm * 2.0f * _PI / 60.0f;
+
   bool angle_out_of_range = std::abs(tilt_rad - g_tilt_filter) > kMaxAngleRad;
   bool wheel_speed_too_high = std::abs(wheel_velocity_rad_s) > kMaxWheelRadS;
 
@@ -423,22 +399,18 @@ void UpdateControlLoop() {
           static_cast<int>(tilt_rad * 1000.0f),
           static_cast<int>(wheel_velocity_rad_s * 1000.0f));
     } else {
-      // 1. Update the filter state (learn the offset)
+      // This filter learns the true vertical offset by observing where we are
+      // hanging out.
       g_tilt_filter =
           (1.0f - kTrimAlpha) * g_tilt_filter + kTrimAlpha * tilt_rad;
-
-      // 2. Calculate the corrected tilt
       const float tilt_corrected = tilt_rad - g_tilt_filter;
 
-      // LQR Control Law: u = K1*theta + K2*theta_dot + K3*omega_w
-      auto u1 = kK1 * tilt_corrected;
-      auto u2 = kK2 * tilt_rate_rad_s;
-      auto u3 = kK3 * wheel_velocity_rad_s;
-
+      const float u1 = kLqrGainsK[0] * tilt_corrected;
+      const float u2 = kLqrGainsK[1] * tilt_rate_rad_s;
+      const float u3 = kLqrGainsK[2] * wheel_velocity_rad_s;
       float u = -(u1 + u2 + u3);
-
-      // Apply current limit
-      u = _constrain(u, -kCurrentLimit, kCurrentLimit);
+      u = _constrain(u, -motor->current_limit, motor->current_limit);
+      motor->target = u;
 
       static uint32_t last_log_ms = 0;
       if (now - last_log_ms >= 50) {
@@ -459,12 +431,11 @@ void UpdateControlLoop() {
                     static_cast<int32_t>(u2 * 1000.0f), now,
                     static_cast<int32_t>(u3 * 1000.0f), now, loop_dt_us);
       }
-
-      motor->target = u;
     }
   } else if (g_control_state == ControlState::WAITING_FOR_STAND) {
     g_tilt_filter = 0.0f;
     motor->target = 0;
+    constexpr float kStandAngleRad = kStandAngleDeg * _PI / 180.0f;
     if (std::abs(tilt_rad) < kStandAngleRad) {
       if (g_stand_still_start_ms == 0) {
         g_stand_still_start_ms = now;
@@ -483,21 +454,9 @@ void Loop() {
   uint32_t start_time = HAL_GetTick();
   uint32_t last_print_time = 0;
   while (true) {
-    // Wait for the MPU6050 data-ready event (set on DMA completion)
-    // or timeout after 50ms to keep the loop alive for buttons/other tasks.
     if (((Mpu6050::FLAG_DONE | Mpu6050::FLAG_ERROR) &
          osEventFlagsWait(g_imu_event_flags, 0x01, osFlagsWaitAny, 50)) == 0) {
       std::printf("Timed out waiting for MPU6050 interrupt!\n");
-    }
-
-    // Check for button press (PC13 active-high) for immediate sleep
-    if (LL_GPIO_IsInputPinSet(GPIOC, LL_GPIO_PIN_13)) {
-      EnterSleepMode();
-    }
-
-    if (HAL_GetTick() - start_time > 10 * 60 * 1000) {
-      EnterSleepMode();
-      start_time = HAL_GetTick();
     }
 
     if (g_mpu6050) {
@@ -530,10 +489,10 @@ void __attribute__((section(".ccmsram"))) DMA1_Channel8_IRQHandler() {
       motor->loopFOC();
       motor->move();
     }
-    if (!is_sleeping && current_sense) {
+    if (current_sense) {
       current_sense->AsyncReadFromMotorUpdate<TIM1_BASE>();
     }
-    if (!is_sleeping && async_spi1) {
+    if (async_spi1) {
       async_spi1->AsyncReadFromMotorUpdate<TIM1_BASE>();
     }
   } else if (LL_DMA_IsActiveFlag_TE8(DMA1)) {
