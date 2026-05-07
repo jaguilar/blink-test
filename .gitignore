@@ -10,3 +10,5 @@ local.env
 bazel-*/
 
 compile_commands.json
+
+/cmake
