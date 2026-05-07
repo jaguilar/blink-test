@@ -59,6 +59,7 @@ constexpr float kTrimAlpha = 0.001f;
 // Motor variables and limits.
 constexpr float kPowerSupplyVoltage = 8.0f;
 constexpr float kCurrentLimit = 8.f;
+constexpr float kVoltageLimit = 2.8f;
 
 // --- Internal Configuration ---
 
@@ -138,33 +139,25 @@ static BLDCMotor* motor = nullptr;
 static CurrentSenseInst* current_sense = nullptr;
 
 static KalmanFilter kalman_filter;
-static uint32_t last_kalman_tick = 0;
 
 extern "C" {
 
 void InitMpu6050() {
-  std::printf("[Setup] Initializing MPU6050 via DMA...\n");
   g_imu_event_flags = osEventFlagsNew(nullptr);
   static uint8_t mpu_buf[sizeof(Mpu6050)];
   g_mpu6050 = new (mpu_buf) Mpu6050(&hi2c1, g_imu_event_flags, 0x01);
 
   if (g_mpu6050->Init()) {
-    std::printf("  [OK] MPU6050 initialized.\n");
-  } else {
-    std::printf("  [FAIL] MPU6050 initialization failed.\n");
+    return;
   }
+  std::printf("  [FAIL] MPU6050 initialization failed.\n");
 }
 
 void Setup() {
   // Wait a couple of seconds so if someone is trying to see early logs they
   // have a chance to connect.
   osDelay(2000);
-
   EnsureCycleCounterEnabled();
-
-  std::printf("\r\n--- STM32 FOC Recovery Boot ---\r\n");
-  osDelay(20);
-
   UartDma_Init(&hlpuart1);
   osDelay(100);  // Allow early logs to flush
 
@@ -176,53 +169,42 @@ void Setup() {
   CORDIC->CSR = (3 << CORDIC_CSR_PRECISION_Pos) | (0 << CORDIC_CSR_FUNC_Pos) |
                 CORDIC_CSR_NRES;
 
-  std::printf("[Setup] Core hardware initialized. DMA logging active.\n");
-
-  std::printf("[Setup] Constructing Driver...\n");
   motor1_driver = new (driver_buf) MotorDriverInst();
   osDelay(10);
 
-  std::printf("[Setup] Constructing Sensor...\n");
   async_spi1 = new (sensor_buf) SensorInst();
   osDelay(10);
 
-  std::printf("[Setup] Constructing Motor...\n");
   motor = new (motor_buf) BLDCMotor(11, 0.040, 380);
   osDelay(20);
 
-  std::printf("[Setup] Constructing Current Sensor...\n");
   current_sense = new (current_sense_buf) CurrentSenseInst();
   osDelay(10);
 
-  // 5. Initializing Objects
-  std::printf("[Setup] Initializing Motor Driver...\n");
   motor1_driver->voltage_power_supply = kPowerSupplyVoltage;
   motor1_driver->voltage_limit = 0.9f * motor1_driver->voltage_power_supply;
   motor1_driver->init();
   osDelay(10);
 
-  std::printf("[Setup] Initializing Sensor...\n");
   async_spi1->init();
   osDelay(10);
 
-  std::printf("[Setup] Initializing Current Sensor...\n");
   current_sense->linkDriver(motor1_driver);
   current_sense->init();
   osDelay(10);
 
-  std::printf("[Setup] Configuring Motor...\n");
-  constexpr float kVoltageLimit = 2.8f;
   motor->voltage_limit =
       std::min(kVoltageLimit, 0.5f * motor1_driver->voltage_limit);
   motor->current_limit = kCurrentLimit;
   motor->controller = MotionControlType::torque;
   motor->torque_controller = TorqueControlType::foc_current;
-  motor->target = 0.6f;                // kMotorTarget
-  motor->voltage_sensor_align = 0.4f;  // kInitFocVoltage
+  motor->voltage_sensor_align = 0.4f;
   motor->zero_electric_angle = 0.58;   // Experimentally verified.
   motor->motion_downsample = 20;
+
   {
-    // Manually set the time intervals to save us the cost of calculating them.
+    // Manually set the time intervals to save us the cost of calculating them
+    // each loop.
     const float dt = 1.0f / GetMotor1Config().pwm_freq;
     motor->PID_current_q.Ts = dt;
     motor->PID_current_d.Ts = dt;
@@ -234,12 +216,9 @@ void Setup() {
     motor->LPF_angle.Ts = dt * (motor->motion_downsample + 1);
   }
 
-  std::printf("[Setup] Linking Components...\n");
   motor->linkSensor(async_spi1);
   motor->linkCurrentSense(current_sense);
-  std::printf("  [OK] Sensor linked.\n");
   motor->linkDriver(motor1_driver);
-  std::printf("  [OK] Driver linked.\n");
 
   SimpleFOCDebug::enable(&Serial);
   motor->useMonitoring(Serial);
@@ -247,17 +226,14 @@ void Setup() {
   motor->monitor_port = &Serial;
   osDelay(20);
 
-  std::printf("[Setup] Initializing Motor...\n");
   motor->init();
   osDelay(10);
 
-  std::printf("[Setup] Starting Hardware Timers...\n");
   async_spi1->AsyncReadFromMotorUpdate<TIM1_BASE>();
   current_sense->SlaveToTimerUpdate<TIM1_BASE>();
   LL_TIM_EnableCounter(TIM1);
   osDelay(10);
 
-  std::printf("[Setup] Initializing FOC Loop...\n");
   motor->initFOC();
   osDelay(10);
   if (motor->motor_status != FOCMotorStatus::motor_ready) {
@@ -267,21 +243,13 @@ void Setup() {
   }
 
   motor->phase_resistance = 0.06f;
-  motor->axis_inductance.d = motor->axis_inductance.q =
-      motor->phase_inductance = 0.000060f;  // 60uH (estimate)
+  constexpr auto inductance = 0.000060f;  // 60uH (estimate)
+  motor->axis_inductance.d = inductance;
+  motor->axis_inductance.q = inductance;
+  motor->phase_inductance = inductance;
 
-  std::printf("[Setup] Tuning Current Controller...\n");
-  motor->tuneCurrentController(500);
-
-  std::printf("[Setup] Final Enable...\n");
+  motor->tuneCurrentController(/*bandwidth=*/500);
   motor->enable();
-
-  std::printf("[Setup] BOOT COMPLETE. Entering loop.\n");
-  osDelay(20);
-
-  NVIC_SetPriority(EXTI15_10_IRQn,
-                   NVIC_EncodePriority(NVIC_GetPriorityGrouping(), 0, 0));
-  NVIC_EnableIRQ(EXTI15_10_IRQn);
 }
 
 void LogMiscellaneousData() {
@@ -352,12 +320,8 @@ void LogMiscellaneousData() {
   }
 }
 
-void UpdateControlLoop() {
-  static uint32_t last_run_us = 0;
-  uint32_t now_us = micros();
-  uint32_t loop_dt_us = (last_run_us == 0) ? 0 : (now_us - last_run_us);
-  last_run_us = now_us;
-
+// Performs calculations related to balancing the robot.
+void Balance() {
   if (!g_mpu6050 || !motor || !async_spi1) return;
 
   float ax = 0, ay = 0, az = 0, gx = 0, gy = 0, gz = 0;
@@ -365,16 +329,17 @@ void UpdateControlLoop() {
   g_mpu6050->GetGyro(gx, gy, gz);
 
   // Kalman Filter Update
-  uint32_t now = HAL_GetTick();
-  if (last_kalman_tick == 0) last_kalman_tick = now;
-  float dt = (now - last_kalman_tick) / 1000.0f;
-  last_kalman_tick = now;
+  static uint32_t last_balance_ms = 0;
+  const uint32_t now = HAL_GetTick();
+  if (last_balance_ms == 0) last_balance_ms = now;
+  float dt = (now - last_balance_ms) / 1000.0f;
+  last_balance_ms = now;
 
   if (dt <= 0) return;
 
   // X is downward (reports -1g when vertical), Y is right.
   float accel_tilt_rad = atan2f(ay, -ax);
-  // Z is the axis of rotation. Note: gz is already in rad/s.
+  // As currently configured, Z is the axis of rotation.
   float tilt_rad = kalman_filter.update(accel_tilt_rad, gz, dt);
   float tilt_rate_rad_s = kalman_filter.getRate();
   // Note: the sign of the wheel velocity is inverted. When we apply negative
@@ -385,8 +350,10 @@ void UpdateControlLoop() {
   constexpr float kMaxAngleRad = kMaxAngleDeg * _PI / 180.0f;
   constexpr float kMaxWheelRadS = kMaxWheelRpm * 2.0f * _PI / 60.0f;
 
-  bool angle_out_of_range = std::abs(tilt_rad - g_tilt_filter) > kMaxAngleRad;
-  bool wheel_speed_too_high = std::abs(wheel_velocity_rad_s) > kMaxWheelRadS;
+  const bool angle_out_of_range =
+      std::abs(tilt_rad - g_tilt_filter) > kMaxAngleRad;
+  const bool wheel_speed_too_high =
+      std::abs(wheel_velocity_rad_s) > kMaxWheelRadS;
 
   if (g_control_state == ControlState::ENABLED) {
     if (angle_out_of_range || wheel_speed_too_high) {
@@ -429,7 +396,7 @@ void UpdateControlLoop() {
                     static_cast<int32_t>(motor->target * 1000.0f), now,
                     static_cast<int32_t>(u1 * 1000.0f), now,
                     static_cast<int32_t>(u2 * 1000.0f), now,
-                    static_cast<int32_t>(u3 * 1000.0f), now, loop_dt_us);
+                    static_cast<int32_t>(u3 * 1000.0f), now, dt);
       }
     }
   } else if (g_control_state == ControlState::WAITING_FOR_STAND) {
@@ -451,7 +418,6 @@ void UpdateControlLoop() {
 }
 
 void Loop() {
-  uint32_t start_time = HAL_GetTick();
   uint32_t last_print_time = 0;
   while (true) {
     if (((Mpu6050::FLAG_DONE | Mpu6050::FLAG_ERROR) &
@@ -459,9 +425,7 @@ void Loop() {
       std::printf("Timed out waiting for MPU6050 interrupt!\n");
     }
 
-    if (g_mpu6050) {
-      UpdateControlLoop();
-    }
+    Balance();
 
     if (HAL_GetTick() - last_print_time >= 250) {
       LogMiscellaneousData();
@@ -489,6 +453,8 @@ void __attribute__((section(".ccmsram"))) DMA1_Channel8_IRQHandler() {
       motor->loopFOC();
       motor->move();
     }
+    // The encoder and current sensor won't retrigger automatically, so we need
+    // to reset their DMAs for the next cycle.
     if (current_sense) {
       current_sense->AsyncReadFromMotorUpdate<TIM1_BASE>();
     }
