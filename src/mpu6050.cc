@@ -1,5 +1,7 @@
 #include "mpu6050.h"
+#include <cmath>
 #include <cstdio>
+#include "common/foc_utils.h"
 
 namespace stfoc {
 
@@ -61,6 +63,13 @@ bool Mpu6050::Init() {
   cb_status = HAL_I2C_RegisterCallback(hi2c_, HAL_I2C_ERROR_CB_ID, I2C_ErrorCallback);
   if (cb_status != HAL_OK) return false;
 
+  // Perform full device reset
+  if (!WriteReg(REG_PWR_MGMT_1, 0x80)) {
+    std::printf("MPU6050: Failed to write DEVICE_RESET\n");
+    return false;
+  }
+  osDelay(100);
+
   uint8_t who_am_i = 0;
   if (!ReadReg(REG_WHO_AM_I, who_am_i)) {
     std::printf("MPU6050: Failed to read WHO_AM_I\n");
@@ -74,6 +83,13 @@ bool Mpu6050::Init() {
   }
 
   // Wake up the device (set PWR_MGMT_1 to 0)
+  uint8_t pwr_mgmt = 0;
+  if (ReadReg(REG_PWR_MGMT_1, pwr_mgmt)) {
+    if (pwr_mgmt & 0x40) {  // Bit 6 is SLEEP
+      std::printf("MPU6050: SLEEP bit was set! Waking up...\n");
+    }
+  }
+
   if (!WriteReg(REG_PWR_MGMT_1, 0x00)) {
     std::printf("MPU6050: Failed to write PWR_MGMT_1\n");
     return false;
@@ -97,7 +113,7 @@ bool Mpu6050::Init() {
     return false;
   }
 
-  std::printf("MPU6050: Initialization successful (500Hz interrupt enabled)\n");
+  std::printf("MPU6050: Initialization successful (200Hz interrupt enabled)\n");
   return true;
 }
 
@@ -149,9 +165,10 @@ void Mpu6050::ParseDmaBuffer() {
   int16_t raw_gy = (static_cast<int16_t>(dma_buffer_[10]) << 8) | dma_buffer_[11];
   int16_t raw_gz = (static_cast<int16_t>(dma_buffer_[12]) << 8) | dma_buffer_[13];
 
-  gx_ = static_cast<float>(raw_gx) / 131.0f;
-  gy_ = static_cast<float>(raw_gy) / 131.0f;
-  gz_ = static_cast<float>(raw_gz) / 131.0f;
+  constexpr float kGyroScaleRad = (1.0f / 131.0f) * (_PI / 180.0f);
+  gx_ = static_cast<float>(raw_gx) * kGyroScaleRad;
+  gy_ = static_cast<float>(raw_gy) * kGyroScaleRad;
+  gz_ = static_cast<float>(raw_gz) * kGyroScaleRad;
 }
 
 void Mpu6050::GetAccel(float& ax, float& ay, float& az) const {

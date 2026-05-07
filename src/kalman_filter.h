@@ -18,8 +18,8 @@ class KalmanFilter {
   }
 
   // Update the Kalman filter with a new measurement
-  // newAngle: measurement from accelerometer (radians or degrees)
-  // newRate: measurement from gyroscope (radians/s or deg/s, consistent with angle)
+  // newAngle: measurement from accelerometer (radians)
+  // newRate: measurement from gyroscope (radians/s, consistent with angle)
   // dt: time step in seconds
   float update(float newAngle, float newRate, float dt) {
     // Prediction step
