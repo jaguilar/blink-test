@@ -1,4 +1,4 @@
-workspace(name = "blink_test")
+workspace(name = "cube")
 
 load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
 
@@ -36,28 +36,8 @@ http_archive(
 load("@rules_foreign_cc//foreign_cc:repositories.bzl", "rules_foreign_cc_dependencies")
 rules_foreign_cc_dependencies()
 
-# Foreign repos in lib directory
-# We'll use new_local_repository for these so we can use rules_foreign_cc or just wrap them.
-# The user said "use the external tooling path", which I take to mean rules_foreign_cc.
-
-new_local_repository(
-    name = "arduino_foc",
-    path = "lib/Arduino-FOC",
-    build_file = "//third_party:arduino_foc.BUILD",
-)
-
-new_local_repository(
-    name = "lwrb",
-    path = "lib/lwrb",
-    build_file = "//third_party:lwrb.BUILD",
-)
-
-new_local_repository(
-    name = "stm32_arduino_shim",
-    path = "lib/stm32_arduino_shim",
-    build_file = "//third_party:stm32_arduino_shim.BUILD",
-)
+# Consolidated libraries are now in //lib package.
 
 register_toolchains(
-    "//toolchain:arm_none_eabi_toolchain",
+    "//bazel/toolchain:arm_none_eabi_toolchain",
 )

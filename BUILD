@@ -2,7 +2,9 @@ load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_library")
 
 package(default_visibility = ["//visibility:public"])
 
-exports_files(["STM32G474XX_FLASH.ld"])
+exports_files([
+    "STM32G474XX_FLASH.ld",
+])
 
 cc_library(
     name = "stm32cubemx_headers",
@@ -118,16 +120,9 @@ cc_library(
     alwayslink = True,
 )
 
-cc_library(
-    name = "arduino_foc_drivers_math",
-    srcs = ["lib/Arduino-FOC-drivers/src/utilities/stm32math/STM32G4CORDICTrigFunctions.cpp"],
-    hdrs = glob(["lib/Arduino-FOC-drivers/src/utilities/stm32math/*.h"]),
-    includes = ["lib/Arduino-FOC-drivers/src/utilities/stm32math"],
-    deps = [":stm32cubemx_headers"],
-)
 
 cc_library(
-    name = "blink_test_common_lib",
+    name = "cube_common_lib",
     srcs = [
         "src/foc_types.cc",
         "src/stm32_motor_driver.cc",
@@ -138,11 +133,11 @@ cc_library(
     ],
     deps = [
         ":cube_app",
-        ":arduino_foc_drivers_math",
+        "//lib:arduino_foc_drivers",
         "@eigen//:eigen",
-        "@arduino_foc//:arduino_foc",
-        "@lwrb//:lwrb",
-        "@stm32_arduino_shim//:arduino",
+        "//lib:arduino_foc",
+        "//lib:lwrb",
+        "//lib:stm32_arduino_shim",
     ],
     copts = [
         "-Wdouble-promotion",
@@ -155,21 +150,21 @@ cc_library(
 )
 
 cc_library(
-    name = "blink_test_lib",
+    name = "cube_lib",
     srcs = [
         "src/app.cc",
     ],
     deps = [
-        ":blink_test_common_lib",
+        ":cube_common_lib",
     ],
     alwayslink = True,
     visibility = ["//visibility:public"],
 )
 
 cc_binary(
-    name = "blink-test",
+    name = "cube",
     deps = [
-        ":blink_test_lib",
+        ":cube_lib",
     ],
 )
 
@@ -178,7 +173,7 @@ load("@hedron_compile_commands//:refresh_compile_commands.bzl", "refresh_compile
 refresh_compile_commands(
     name = "refresh_compile_commands",
     targets = {
-        "//:blink-test": "",
+        "//:cube": "",
         "//tests/...": "",
     },
 )

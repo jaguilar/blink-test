@@ -1,14 +1,14 @@
 load("@rules_cc//cc:defs.bzl", "cc_binary")
 
 cc_binary(
-    name = "blink-tests",
+    name = "cube-tests",
     srcs = [
         "main_test.cc",
         "test_dummy.cc",
         "test_timers.cc",
     ],
     deps = [
-        "//:blink_test_common_lib",
+        "//:cube_test_common_lib",
         "@cpputest//:cpputest",
         "@cpputest//:cpputest_ext",
     ],
@@ -21,7 +21,7 @@ cc_binary(
         "test_spi_sensor.cc",
     ],
     deps = [
-        "//:blink_test_common_lib",
+        "//:cube_test_common_lib",
         "@cpputest//:cpputest",
         "@cpputest//:cpputest_ext",
     ],
@@ -34,7 +34,7 @@ cc_binary(
         "test_adc_current_sense.cc",
     ],
     deps = [
-        "//:blink_test_common_lib",
+        "//:cube_test_common_lib",
         "@cpputest//:cpputest",
         "@cpputest//:cpputest_ext",
     ],
@@ -47,7 +47,7 @@ cc_binary(
         "test_mpu6050.cc",
     ],
     deps = [
-        "//:blink_test_common_lib",
+        "//:cube_test_common_lib",
         "@cpputest//:cpputest",
         "@cpputest//:cpputest_ext",
     ],
@@ -60,7 +60,7 @@ cc_binary(
         "test_kalman_filter.cc",
     ],
     deps = [
-        "//:blink_test_common_lib",
+        "//:cube_test_common_lib",
         "@cpputest//:cpputest",
         "@cpputest//:cpputest_ext",
     ],

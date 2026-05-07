@@ -21,7 +21,7 @@ register_toolchains("@python_3_11//:all")
 bazel_dep(name = "rules_foreign_cc", version = "0.13.0")
 bazel_dep(name = "platforms", version = "0.0.10")
 
-register_toolchains("//toolchain:arm_none_eabi_toolchain")
+register_toolchains("//bazel/toolchain:arm_none_eabi_toolchain")
 
 http_archive = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
 
@@ -71,23 +71,4 @@ cc_library(
     urls = ["https://github.com/cpputest/cpputest/archive/v4.0.tar.gz"],
 )
 
-# Local repositories
-new_local_repository = use_repo_rule("@bazel_tools//tools/build_defs/repo:local.bzl", "new_local_repository")
-
-new_local_repository(
-    name = "arduino_foc",
-    path = "lib/Arduino-FOC",
-    build_file = "//third_party:arduino_foc.BUILD",
-)
-
-new_local_repository(
-    name = "lwrb",
-    path = "lib/lwrb",
-    build_file = "//third_party:lwrb.BUILD",
-)
-
-new_local_repository(
-    name = "stm32_arduino_shim",
-    path = "lib/stm32_arduino_shim",
-    build_file = "//third_party:stm32_arduino_shim.BUILD",
-)
+# Consolidated libraries are now in //lib package.

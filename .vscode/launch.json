@@ -4,7 +4,7 @@
         {
             "name": "OpenOCD Debug (STM32G4)",
             "cwd": "${workspaceFolder}",
-            "executable": "${workspaceFolder}/build/blink-test.elf",
+            "executable": "${workspaceFolder}/bazel-bin/cube",
             "request": "launch",
             "type": "cortex-debug",
             "runToEntryPoint": "main",
@@ -17,7 +17,7 @@
                 "target/stm32g4x.cfg"
             ],
             "svdFile": "${workspaceFolder}/scripts/STM32G474xx.svd",
-            "preLaunchTask": "Build blink-test"
+            "preLaunchTask": "Build firmware"
         }
     ]
 }

@@ -1,5 +1,5 @@
 # Set the default platform for builds
-build --platforms=//platforms:stm32g4
+build --platforms=//bazel/platforms:stm32g4
 
 # Common build flags
 build --cxxopt=-std=c++20
