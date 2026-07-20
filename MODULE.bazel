@@ -23,6 +23,9 @@ bazel_dep(name = "platforms", version = "0.0.10")
 
 register_toolchains("//bazel/toolchain:arm_none_eabi_toolchain")
 
+arm_toolchain_ext = use_extension("//bazel/toolchain:repo.bzl", "arm_toolchain_ext")
+use_repo(arm_toolchain_ext, "arm_none_eabi_config")
+
 http_archive = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
 
 http_archive(

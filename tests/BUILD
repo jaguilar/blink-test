@@ -8,7 +8,7 @@ cc_binary(
         "test_timers.cc",
     ],
     deps = [
-        "//:cube_test_common_lib",
+        "//:cube_common_lib",
         "@cpputest//:cpputest",
         "@cpputest//:cpputest_ext",
     ],
@@ -21,7 +21,7 @@ cc_binary(
         "test_spi_sensor.cc",
     ],
     deps = [
-        "//:cube_test_common_lib",
+        "//:cube_common_lib",
         "@cpputest//:cpputest",
         "@cpputest//:cpputest_ext",
     ],
@@ -34,7 +34,7 @@ cc_binary(
         "test_adc_current_sense.cc",
     ],
     deps = [
-        "//:cube_test_common_lib",
+        "//:cube_common_lib",
         "@cpputest//:cpputest",
         "@cpputest//:cpputest_ext",
     ],
@@ -47,7 +47,7 @@ cc_binary(
         "test_mpu6050.cc",
     ],
     deps = [
-        "//:cube_test_common_lib",
+        "//:cube_common_lib",
         "@cpputest//:cpputest",
         "@cpputest//:cpputest_ext",
     ],
@@ -60,7 +60,7 @@ cc_binary(
         "test_kalman_filter.cc",
     ],
     deps = [
-        "//:cube_test_common_lib",
+        "//:cube_common_lib",
         "@cpputest//:cpputest",
         "@cpputest//:cpputest_ext",
     ],

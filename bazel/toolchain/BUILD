@@ -25,10 +25,7 @@ cc_toolchain(
 
 toolchain(
     name = "arm_none_eabi_toolchain",
-    exec_compatible_with = [
-        "@platforms//os:linux",
-        "@platforms//cpu:x86_64",
-    ],
+    exec_compatible_with = [],
     target_compatible_with = [
         "@platforms//os:none",
         "@platforms//cpu:arm",

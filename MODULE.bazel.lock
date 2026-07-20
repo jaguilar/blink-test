@@ -192,6 +192,19 @@
   },
   "selectedYankedVersions": {},
   "moduleExtensions": {
+    "//bazel/toolchain:repo.bzl%arm_toolchain_ext": {
+      "general": {
+        "bzlTransitiveDigest": "+mCxZFjrCAtnj/PLq0Dpp5slV/j57R5vtmRKzVzXLeg=",
+        "usagesDigest": "4Yht0ZEsP3EzPi3Ee/vrP4XIZFvHwMSrZTcqCTd5cuc=",
+        "recordedInputs": [],
+        "generatedRepoSpecs": {
+          "arm_none_eabi_config": {
+            "repoRuleId": "@@//bazel/toolchain:repo.bzl%detect_arm_none_eabi_toolchain",
+            "attributes": {}
+          }
+        }
+      }
+    },
     "@@rules_foreign_cc+//foreign_cc:extensions.bzl%tools": {
       "general": {
         "bzlTransitiveDigest": "jq7grqcdzyJIu0nmzKX7Uhmyo9VOevM28v8aw+8VFTg=",

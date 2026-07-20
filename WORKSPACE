@@ -38,6 +38,9 @@ rules_foreign_cc_dependencies()
 
 # Consolidated libraries are now in //lib package.
 
+load("//bazel/toolchain:repo.bzl", "detect_arm_none_eabi_toolchain")
+detect_arm_none_eabi_toolchain(name = "arm_none_eabi_config")
+
 register_toolchains(
     "//bazel/toolchain:arm_none_eabi_toolchain",
 )

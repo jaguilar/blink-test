@@ -1,18 +1,19 @@
 load("@bazel_tools//tools/cpp:cc_toolchain_config_lib.bzl", "feature", "flag_group", "flag_set", "tool_path")
 load("@bazel_tools//tools/build_defs/cc:action_names.bzl", "ACTION_NAMES")
 load("@rules_cc//cc:defs.bzl", "CcToolchainConfigInfo", "cc_common")
+load("@arm_none_eabi_config//:paths.bzl", "SYS_INCLUDE_DIRS", "TOOL_PATHS")
 
 def _impl(ctx):
     tool_paths = [
-        tool_path(name = "gcc", path = "/usr/bin/arm-none-eabi-gcc"),
-        tool_path(name = "cpp", path = "/usr/bin/arm-none-eabi-cpp"),
-        tool_path(name = "ar", path = "/usr/bin/arm-none-eabi-gcc-ar"),
-        tool_path(name = "nm", path = "/usr/bin/arm-none-eabi-gcc-nm"),
-        tool_path(name = "ld", path = "/usr/bin/arm-none-eabi-ld"),
-        tool_path(name = "objcopy", path = "/usr/bin/arm-none-eabi-objcopy"),
-        tool_path(name = "objdump", path = "/usr/bin/arm-none-eabi-objdump"),
-        tool_path(name = "strip", path = "/usr/bin/arm-none-eabi-strip"),
-        tool_path(name = "gcov", path = "/usr/bin/arm-none-eabi-gcov"),
+        tool_path(name = "gcc", path = TOOL_PATHS["gcc"]),
+        tool_path(name = "cpp", path = TOOL_PATHS["cpp"]),
+        tool_path(name = "ar", path = TOOL_PATHS["ar"]),
+        tool_path(name = "nm", path = TOOL_PATHS["nm"]),
+        tool_path(name = "ld", path = TOOL_PATHS["ld"]),
+        tool_path(name = "objcopy", path = TOOL_PATHS["objcopy"]),
+        tool_path(name = "objdump", path = TOOL_PATHS["objdump"]),
+        tool_path(name = "strip", path = TOOL_PATHS["strip"]),
+        tool_path(name = "gcov", path = TOOL_PATHS["gcov"]),
     ]
 
     target_flags = [
@@ -97,12 +98,7 @@ def _impl(ctx):
         abi_libc_version = "unknown",
         tool_paths = tool_paths,
         features = features,
-        cxx_builtin_include_directories = [
-            "/usr/lib/gcc/arm-none-eabi/14.2.1/include",
-            "/usr/lib/gcc/arm-none-eabi/14.2.1/include-fixed",
-            "/usr/include/newlib",
-            "/usr/arm-none-eabi/include",
-        ],
+        cxx_builtin_include_directories = SYS_INCLUDE_DIRS,
     )
 
 cc_toolchain_config = rule(
